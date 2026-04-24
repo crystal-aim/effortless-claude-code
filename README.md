@@ -1,0 +1,358 @@
+# Effortless Claude Code - Claude Croxy
+
+A lightweight API proxy for Claude that adds virtual key management, usage tracking, budget controls, and multi-backend routing. Run it in front of the Anthropic API, AWS Bedrock, or local MLX models — manage everything from a single admin dashboard.
+
+## Features
+
+- **API Proxy** — Drop-in replacement for the Anthropic `/v1/messages` endpoint (streaming + non-streaming)
+- **Virtual Keys** — Issue `sk-ccm-*` keys with per-key budgets, expiration dates, and rate limits
+- **Multi-Backend** — Route requests to Anthropic API, AWS Bedrock, or local MLX models
+- **Auto Routing** — Keyword-based model routing from system prompts (e.g. "quick" → Haiku, "deep reasoning" → Opus)
+- **Usage Tracking** — Token counts, cost breakdowns, latency metrics per key/model/day
+- **Budget Controls** — Per-key spend limits with daily/weekly/monthly reset periods
+- **Local Inference** — Run Gemma 4, Qwen 2.5, Llama 3.1, Mistral Nemo on Apple Silicon via MLX
+- **Admin Dashboard** — Web UI for key management, provider config, usage charts, and MLX server control
+- **Token Filter** — RTK-style [PreToolUse hook](https://github.com/rtk-ai/rtk) that rewrites verbose CLI commands (git diff, find, grep, etc.) to include output truncation — 60–90% token savings without breaking prompt caching
+- **Claude Setup** — One-click installer for [everything-claude-code](https://github.com/affaan-m/everything-claude-code) (48 agents, 183 skills, 79 commands, 88 rules, 14 MCP servers, hooks) plus a browser for [awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code)
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.11+
+- (Optional) Apple Silicon Mac for MLX local inference
+
+### Install
+
+```bash
+git clone https://github.com/claude-croxy/claude-croxy.git
+cd claude-croxy
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Configure
+
+Copy the example config and edit it:
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+At minimum, change the `session_secret` in `config.yaml`:
+
+```yaml
+server:
+  session_secret: "replace-with-a-random-string"  # CHANGE THIS
+
+backend:
+  provider: "claude"  # claude | bedrock | mlx | auto
+```
+
+Set your Anthropic API key:
+
+```bash
+mkdir -p secrets
+echo "sk-ant-YOUR-KEY" > secrets/anthropic_api_key
+```
+
+### Run
+
+```bash
+CCM_ADMIN_EMAIL=admin@example.com \
+CCM_ADMIN_PASSWORD=your-secure-password \
+python -m app.main
+```
+
+The server starts on `http://localhost:4000`. Open the admin dashboard at `/ui/admin`.
+
+### Use
+
+Generate a virtual key from the admin dashboard, then point any Anthropic-compatible client at your proxy:
+
+```bash
+curl http://localhost:4000/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ccm-your-virtual-key" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `CCM_ADMIN_EMAIL` | — | Initial admin account email (required on first run) |
+| `CCM_ADMIN_PASSWORD` | — | Initial admin account password (required on first run) |
+| `CCM_CONFIG` | `config.yaml` | Path to config file |
+| `CCM_DATABASE_URL` | `sqlite:///./data.db` | Database connection string |
+| `CCM_LOG_LEVEL` | `INFO` | Logging level |
+
+### Backend Providers
+
+**Claude** (default) — Forward to the Anthropic API. Place your API key in `secrets/anthropic_api_key`.
+
+**AWS Bedrock** — Uses SSO device authorization. Configure in `config.yaml`:
+
+```yaml
+backend:
+  provider: "bedrock"
+  bedrock:
+    region: "us-east-1"
+    aws_profile: "your-profile"
+    sso_start_url: "https://your-org.awsapps.com/start"
+```
+
+Then complete SSO login from the admin dashboard under the Provider tab.
+
+**MLX** (local inference) — Run open-source models on Apple Silicon:
+
+```yaml
+backend:
+  provider: "mlx"
+  mlx:
+    port: 8899
+    model_map:
+      gemma-4-e2b-it: "mlx-community/gemma-4-e2b-it-4bit"
+      qwen-2.5-32b-it: "mlx-community/Qwen2.5-32B-Instruct-4bit"
+```
+
+Download and start models from the admin dashboard. MLX models support tool calling via Anthropic-to-OpenAI protocol conversion.
+
+**Auto** — Uses Claude as primary, falls back to Bedrock on 529 (overloaded) responses.
+
+### Routing Rules
+
+Route requests to different models based on keywords in the system prompt:
+
+```yaml
+routing_rules:
+  - keywords: ["opus", "deep reasoning", "architect"]
+    model: "claude-opus-4-7"
+  - keywords: ["haiku", "quick", "cheap"]
+    model: "claude-haiku-4-5-20251001"
+```
+
+### Pricing
+
+Configure per-model pricing (USD per million tokens) for cost tracking:
+
+```yaml
+pricing:
+  claude-sonnet-4-6:
+    input: 3.0
+    output: 15.0
+    cache_write: 3.75
+    cache_read: 0.30
+```
+
+Local MLX models default to `0.0` for all token types.
+
+## Claude Setup
+
+The admin dashboard includes a **Claude Setup** panel (sidebar → *Claude Setup*) that installs Claude Code enhancements directly into `~/.claude/` or a project's `.claude/`. Everything happens locally — no external plugin system is used.
+
+### Sources
+
+- **Everything-CC** (`everything-claude-code`) — auto-install agents, skills, commands, rules, MCP servers, and hooks
+- **Awesome-CC** (`awesome-claude-code`) — searchable catalog of external Claude Code tools (view only, click out to the project)
+
+### Install targets
+
+- **User level** — `~/.claude/` (applies to every project)
+- **Project level** — `<your-project>/.claude/` (per-project, absolute path)
+
+### Everything-CC flow
+
+1. **Sync** — clones `affaan-m/everything-claude-code` to `~/.cache/claude-croxy/ecc-repo/`. Nothing is touched in `~/.claude/` yet.
+2. **Choose items** — pick a curated preset (Starter / Web Dev / Security / Full) or tick individual items in Browse.
+3. **Install** — a dry-run modal shows creates/overwrites; optionally backs up existing files to `*.bak.<timestamp>` before writing.
+
+MCP servers merge into `~/.claude.json` (user) or `<project>/.mcp.json` (project); existing entries are preserved. Hooks add `~/.claude/plugins/everything-claude-code/` as a symlink to the cache and merge hook entries into `settings.json` (deduped by hook `id`).
+
+### Installed + uninstall
+
+The **Installed** sub-tab lists every tracked install with:
+- `modified` badge — on-disk content differs from what we installed (user edited the file)
+- `upstream changed` badge — repo has a newer version since install
+- `backup` badge — original file was preserved
+
+Uninstall restores backups when available and reverses JSON-merge installs (MCP / hooks) back to their pre-ECC state.
+
+### Export / Import profile
+
+Installed tab has **Export profile** (download a JSON snapshot) and **Import profile…** (apply a snapshot from another machine). Portable bundle includes: file items, MCP server IDs, hooks flag, and target preferences.
+
+### Auto-sync
+
+Toggle in the Sync status card — runs git pull of ECC + refresh of ACC on an interval (default 24h). State persists in the `settings` table.
+
+## Token Filter
+
+The admin dashboard includes a **Token Filter** tab (inside *Claude Setup*) that deploys an [RTK](https://github.com/rtk-ai/rtk)-style PreToolUse hook into Claude Code. The hook intercepts verbose CLI commands and rewrites them to include output truncation **before** they execute — so the filtered output is what enters the conversation context, not a post-hoc trim.
+
+### Why not filter at the proxy?
+
+Modifying the API payload at proxy level breaks Anthropic's prompt caching (cache keys are exact-match). A cache miss on Sonnet costs 10x more than a cache hit ($3 vs $0.30 per 1M tokens), so the "savings" from trimming tokens would often be offset by lost cache hits. The PreToolUse hook avoids this entirely — the command runs with truncation built in, the client sees the short output, and caching works normally.
+
+### What gets filtered
+
+| Command | Strategy | Savings |
+|---------|----------|---------|
+| `git log` (no `-n`) | Adds `-n 50` | ~90% on large repos |
+| `git diff` | Appends `\| head -N` | ~80% on big diffs |
+| `find` | Appends `\| head -N` | ~95% on deep trees |
+| `grep -r` / `rg` | Appends `\| head -N` | ~85% |
+| `cat` / `bat` | Replaced with `head -N` | ~90% on large files |
+| `pytest` / `jest` / `cargo test` | Appends `\| tail -N` (keeps summary) | ~70% |
+| `docker ps/images/logs` | Appends `\| head -N` | ~80% |
+| `ls -R` / `tree` | Appends `\| head -N` | ~90% |
+
+Commands that already have truncation (`| head`, `| tail`), compound commands (`&&`, `||`, `;`), or command substitutions (`$()`) are left untouched.
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Max lines (head) | 300 | Truncation limit for most commands |
+| Tail lines | 150 | Lines kept for test runner output |
+
+Both values are configurable from the Token Filter tab and persisted in the database.
+
+### Install / Uninstall
+
+From the admin dashboard → *Claude Setup* → **Token Filter** tab:
+
+1. Set max/tail lines if needed
+2. Click **Install Token Filter**
+3. Confirm — writes `~/.claude/croxy-token-filter.sh` and adds the hook to `settings.json`
+
+Uninstall removes both the script and the hook entry. The hook is tracked in the Installed tab alongside ECC items and can be uninstalled from there too.
+
+### Manual install
+
+If you prefer not to use the dashboard:
+
+```bash
+# Generate and install the hook script
+python3 -c "
+from app.ecc.token_filter import generate_script
+from pathlib import Path
+p = Path.home() / '.claude' / 'croxy-token-filter.sh'
+p.write_text(generate_script(max_lines=300, tail_lines=150))
+import os; os.chmod(p, 0o755)
+print(f'Written to {p}')
+"
+```
+
+Then add to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "~/.claude/croxy-token-filter.sh" }],
+        "description": "Croxy token filter — truncates verbose CLI output to save tokens",
+        "id": "pre:bash:croxy-token-filter"
+      }
+    ]
+  }
+}
+```
+
+### Inspiration
+
+This feature is inspired by [RTK (Rust Token Killer)](https://github.com/rtk-ai/rtk), a Rust-based CLI proxy that achieves 60–90% token savings by filtering command outputs before they reach AI contexts. The croxy implementation takes the same approach but deploys it as a Claude Code hook — no extra binary needed, configurable from the admin dashboard, and compatible with the existing ECC installer infrastructure.
+
+## Architecture
+
+```
+Client (Claude Code, apps, etc.)
+  │
+  ▼
+┌──────────────────────────────┐
+│  Claude Croxy  (FastAPI)     │
+│                              │
+│  Auth → Rate Limit → Route   │
+│         │                    │
+│         ▼                    │
+│  ┌─────────────────────┐     │
+│  │  Backend Router      │     │
+│  │  ├─ Anthropic API    │     │
+│  │  ├─ AWS Bedrock      │     │
+│  │  └─ MLX (local)      │     │
+│  └─────────────────────┘     │
+│         │                    │
+│  Usage Tracking → SQLite     │
+└──────────────────────────────┘
+```
+
+## Project Structure
+
+```
+app/
+├── main.py              # FastAPI app & lifespan
+├── proxy.py             # /v1/messages proxy router
+├── auth.py              # Key & session authentication
+├── routing.py           # Keyword-based model routing
+├── config.py            # YAML + DB config management
+├── models.py            # SQLAlchemy models
+├── db.py                # Database setup
+├── rate_limit.py        # Per-key rate limiting
+├── backend/
+│   ├── router.py        # Backend dispatch
+│   ├── claude.py       # Anthropic API backend
+│   ├── bedrock.py       # AWS Bedrock backend
+│   ├── mlx.py           # MLX inference + protocol conversion
+│   └── mlx_server.py    # MLX subprocess management
+├── admin/               # Admin API routes
+├── tracking/            # Usage logging & pricing
+├── ecc/                 # everything-claude-code installer
+│   ├── sync.py          #   git clone/pull into cache
+│   ├── catalog.py       #   scan repo → agents/skills/commands/rules
+│   ├── presets.py       #   curated bundles (Starter, Web Dev, ...)
+│   ├── installer.py     #   plan/apply file installs + hash tracking
+│   ├── mcp.py           #   merge mcpServers into target JSON
+│   ├── hooks.py         #   plugin symlink + settings.json merge
+│   ├── token_filter.py  #   RTK-style token filter hook
+│   ├── uninstaller.py   #   revert + restore backups
+│   ├── profile.py       #   export/import portable install bundle
+│   ├── auto_sync.py     #   background cron (ECC + ACC)
+│   └── hashes.py        #   hash helpers for diff detection
+├── acc/                 # awesome-claude-code catalog browser
+└── static/              # Web dashboard (HTML/CSS/JS)
+```
+
+## Development
+
+```bash
+# Run with debug logging
+CCM_LOG_LEVEL=DEBUG CCM_ADMIN_EMAIL=admin@example.com CCM_ADMIN_PASSWORD=dev123 python -m app.main
+```
+
+The admin dashboard is served as static files — edit `app/static/` and refresh.
+
+## Credits
+
+The Claude Setup panel integrates two upstream community projects. Neither is bundled with this repo — they are fetched on demand and cached under `~/.cache/claude-croxy/`. All credit for the content installed by this panel goes to the original authors.
+
+- **[everything-claude-code](https://github.com/affaan-m/everything-claude-code)** by [Affaan Mustafa](https://github.com/affaan-m) — MIT.
+  Source of the 48 agents, 183 skills, 79 commands, 88 rules, 14 MCP server definitions, and the hook suite. Claude Croxy only provides a local installer around it; the definitions themselves are upstream's work.
+
+- **[awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code)** by [hesreallyhim](https://github.com/hesreallyhim) — MIT.
+  Source of the curated external catalog (`THE_RESOURCES_TABLE.csv`). Claude Croxy displays it as a browse-only table that links out to each project.
+
+If upstream licensing, authorship, or structure changes, this README and the loaders in `app/ecc/` / `app/acc/` should be updated to match.
+
+## License
+
+MIT

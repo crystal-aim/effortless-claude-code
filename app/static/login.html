@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sign in — Claude Code Max Croxy</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("theme");
+          var sys = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          document.documentElement.dataset.theme = saved || sys;
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/static/css/tokens.css" />
+    <link rel="stylesheet" href="/static/css/base.css" />
+    <link rel="stylesheet" href="/static/css/layout.css" />
+    <link rel="stylesheet" href="/static/css/components.css" />
+  </head>
+  <body>
+    <div class="auth-shell">
+      <button class="theme-toggle" id="themeToggle" title="Toggle theme" aria-label="Toggle theme"></button>
+
+      <form class="auth-card" id="loginForm">
+        <div class="auth-brand">
+          <span class="logo">C</span>
+          <span>Claude Code Max Croxy</span>
+        </div>
+        <h1>Welcome back</h1>
+        <p class="auth-sub">Sign in to manage your virtual keys.</p>
+
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="text" id="email" placeholder="name@example.com" autocomplete="email" required />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="Your password" autocomplete="current-password" required />
+        </div>
+        <button class="btn" type="submit" id="submitBtn">Sign in</button>
+        <div class="form-error hidden" id="err" style="margin-top:12px"></div>
+
+        <div class="auth-hint">
+          First run? Seed the initial admin by setting <span class="mono">CCM_ADMIN_EMAIL</span> and <span class="mono">CCM_ADMIN_PASSWORD</span> in the environment before startup.
+        </div>
+      </form>
+    </div>
+
+    <script type="module">
+      import { api } from "/static/js/api.js";
+      import { toggleTheme, getTheme } from "/static/js/theme.js";
+      import { icons, toast } from "/static/js/ui.js";
+
+      const themeBtn = document.getElementById("themeToggle");
+      function paintThemeIcon() {
+        themeBtn.innerHTML = getTheme() === "light" ? icons.moon : icons.sun;
+      }
+      paintThemeIcon();
+      themeBtn.addEventListener("click", () => { toggleTheme(); paintThemeIcon(); });
+      document.documentElement.addEventListener("theme:change", paintThemeIcon);
+
+      const form = document.getElementById("loginForm");
+      const err = document.getElementById("err");
+      const submitBtn = document.getElementById("submitBtn");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const email = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value;
+        err.classList.add("hidden");
+        err.textContent = "";
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Signing in…";
+        try {
+          await api("/auth/login", { method: "POST", body: { email, password } });
+          window.location.href = "/ui/admin";
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Sign in";
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Admin — Claude Code Max Croxy</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("theme");
+        var sys = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        document.documentElement.dataset.theme = saved || sys;
+      } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/css/tokens.css" />
+  <link rel="stylesheet" href="/static/css/base.css" />
+  <link rel="stylesheet" href="/static/css/layout.css" />
+  <link rel="stylesheet" href="/static/css/components.css" />
+</head>
+
+<body>
+  <main class="content">
+    <div class="content-inner">
+      <div class="page-header">
+        <h1 id="pageTitle">Overview</h1>
+      </div>
+
+      <section id="panel-overview" class="panel">
+        <div class="stat-grid" id="overviewStats"></div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Daily spend (last 30 days)</h2>
+          </div>
+          <div style="position:relative;height:220px">
+            <canvas id="overviewChart"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>By user</h2>
+          </div>
+          <div style="overflow-x:auto">
+            <table id="byUserTable">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th class="num">Requests</th>
+                  <th class="num">Cost</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>By model</h2>
+          </div>
+          <div style="overflow-x:auto">
+            <table id="byModelTable">
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th class="num">Requests</th>
+                  <th class="num">Cost</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="panel-keys" class="panel hidden">
+        <div class="card">
+          <div class="card-header">
+            <h2>Quickstart</h2>
+          </div>
+          <p class="muted" style="margin:0 0 var(--space-3)">Run these exports in your shell <strong>before</strong>
+            starting <code>claude</code>. Replace the key with one of your virtual keys below.</p>
+          <div class="code-snippet">
+            <pre><code id="quickstartCode">export ANTHROPIC_BASE_URL="http://localhost:4000"
+export ANTHROPIC_MODEL="claude-sonnet-4-6"
+export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxxx"</code></pre>
+            <button class="btn small secondary" id="copyQuickstartBtn">
+              <span id="copyQuickstartIcon"></span>
+              <span>Copy</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="stat-grid" id="keysStatGrid"></div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>Virtual keys</h2>
+            <div class="grow"></div>
+            <button class="btn" id="newKeyBtn">
+              <span class="icon" id="newKeyIcon"></span> New key
+            </button>
+          </div>
+          <div id="allKeysTableWrap">
+            <table id="allKeysTable" class="stack-on-mobile">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Prefix</th>
+                  <th>Owner</th>
+                  <th class="num">Spend</th>
+                  <th class="num">Budget</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                  <th data-no-sort></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>Usage by key (last 30 days)</h2>
+            <div class="grow"></div>
+            <select id="keySelect" style="max-width:260px"></select>
+          </div>
+          <div style="position:relative;height:220px">
+            <canvas id="keyUsageChart"></canvas>
+          </div>
+          <div class="stat-grid" id="keyTotals" style="margin-top:16px;margin-bottom:0"></div>
+        </div>
+      </section>
+
+      <section id="panel-provider" class="panel hidden">
+        <div class="card">
+          <div class="card-header">
+            <h2>Backend provider</h2>
+          </div>
+          <p class="muted" style="margin:0 0 var(--space-4)">Choose how requests are forwarded.</p>
+          <div class="form-stack">
+            <div class="field">
+              <label>Provider</label>
+              <select id="providerSelect">
+                <option value="claude">claude — forward to Anthropic API</option>
+                <option value="bedrock">bedrock — AWS Bedrock only</option>
+                <option value="mlx">mlx — local MLX inference</option>
+                <option value="auto">auto — try Claude first, fallback to Bedrock on 529</option>
+              </select>
+            </div>
+            <div class="field hidden" id="mlxModelField">
+              <label>MLX Model <span id="mlxInlineBadge" class="badge off"
+                  style="margin-left:8px;vertical-align:middle">stopped</span></label>
+              <select id="mlxModelSelectInline"></select>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn" id="saveProviderBtn">Save</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>AWS Bedrock credentials</h2>
+            <div class="grow"></div>
+            <span id="bedrockStatusBadge" class="badge off">not configured</span>
+          </div>
+          <div class="form-stack">
+            <div class="field">
+              <label>AWS profile name <span class="muted">(from ~/.aws/config — auto-fills SSO URL +
+                  region)</span></label>
+              <input id="awsProfileInput" type="text" list="awsProfilesList" placeholder="my-sso-profile"
+                autocomplete="off" />
+              <datalist id="awsProfilesList"></datalist>
+            </div>
+            <div class="field">
+              <label>SSO start URL</label>
+              <input id="ssoStartUrl" type="url" placeholder="https://xxxxx.awsapps.com/start" />
+            </div>
+            <div class="field">
+              <label>AWS region</label>
+              <input id="ssoRegion" type="text" value="us-east-1" />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn" id="startSsoBtn">Start SSO login</button>
+          </div>
+          <div id="ssoVerifyBox" class="hidden info-box">
+            <p style="margin:0 0 var(--space-2);font-weight:600">Open this link in your browser to authorize:</p>
+            <a id="ssoVerifyLink" href="#" target="_blank" rel="noopener" style="word-break:break-all"></a>
+            <p id="ssoVerifyStatus" class="muted" style="margin:var(--space-2) 0 0">Waiting for approval…</p>
+          </div>
+          <div id="bedrockConnectedInfo" class="hidden bedrock-connected">
+            <span id="bedrockConnectedText"></span>
+            <button class="btn small danger" id="disconnectBtn">Disconnect</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>MLX Local Inference</h2>
+            <div class="grow"></div>
+            <span id="mlxStatusBadge" class="badge off">stopped</span>
+          </div>
+          <p class="muted" style="margin:0 0 var(--space-4)">Run Gemma 4 models locally via mlx-vlm. Models are
+            downloaded automatically on first use.</p>
+          <div class="form-stack">
+            <div class="field">
+              <label>Model</label>
+              <select id="mlxModelSelect"></select>
+            </div>
+          </div>
+          <div class="form-actions" style="gap:8px;display:flex">
+            <button class="btn" id="mlxStartBtn">Start</button>
+            <button class="btn secondary" id="mlxStopBtn" disabled>Stop</button>
+          </div>
+          <div id="mlxRunningInfo" class="hidden" style="margin-top:var(--space-3)">
+            <p class="muted" style="margin:0"><strong>Running:</strong> <span id="mlxRunningModel"></span></p>
+          </div>
+          <details id="mlxLogsDetails" style="margin-top:var(--space-4)">
+            <summary style="cursor:pointer;font-weight:600;font-size:var(--fs-sm)">Server logs</summary>
+            <pre id="mlxLogsBox"
+              style="max-height:260px;overflow-y:auto;font-size:var(--fs-xs);background:var(--surface-2);border-radius:var(--radius);padding:var(--space-3);margin-top:var(--space-2);white-space:pre-wrap;word-break:break-all"></pre>
+          </details>
+        </div>
+      </section>
+
+      <section id="panel-ecc" class="panel hidden"></section>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script type="module">
+    import { api, requireLogin } from "/static/js/api.js";
+    import { el, clear, $, $$, fmtUsd, fmtInt, fmtDate } from "/static/js/dom.js";
+    import { renderShell } from "/static/js/nav.js";
+    import { chartPalette } from "/static/js/theme.js";
+    import {
+      toast, confirm, modal,
+      skeletonTable, skeletonStats, emptyState, emptyTableRow, icons,
+      copyToClipboard,
+    } from "/static/js/ui.js";
+    import { enhance } from "/static/js/table.js";
+    import { loadSetup } from "/static/js/setup.js";
+
+    let me = null;
+    let overviewChart = null;
+    let overviewData = null;
+    let keyUsageChart = null;
+    let keyUsageData = null;
+    let allKeysCache = [];
+
+    const TITLES = {
+      overview: "Overview",
+      keys: "Virtual keys",
+      provider: "Provider settings",
+      ecc: "Claude Setup",
+    };
+
+    function showPanel(name) {
+      $$(".panel").forEach((p) => p.classList.toggle("hidden", p.id !== "panel-" + name));
+      $("#pageTitle").textContent = TITLES[name] || "Admin";
+      $$(".nav-link").forEach((a) => {
+        const active = a.getAttribute("href") === "/ui/admin" + (name === "overview" ? "" : "#" + name);
+        a.classList.toggle("active", active);
+      });
+      if (name === "keys") loadAllKeys();
+      if (name === "overview") loadOverview();
+      if (name === "provider") loadProvider();
+      if (name === "ecc") loadSetup();
+    }
+
+    function currentPanelFromHash() {
+      const h = (location.hash || "").replace("#", "");
+      if (h === "keys" || h === "provider" || h === "ecc") return h;
+      return "overview";
+    }
+
+    function chartOptions() {
+      const p = chartPalette();
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: p.axis }, grid: { color: p.grid } },
+          y: { ticks: { color: p.axis }, grid: { color: p.grid } },
+        },
+        plugins: { legend: { labels: { color: p.text } } },
+      };
+    }
+
+    function buildOverviewChart(data) {
+      if (overviewChart) overviewChart.destroy();
+      const p = chartPalette();
+      overviewChart = new Chart($("#overviewChart"), {
+        type: "line",
+        data: {
+          labels: data.daily.map((d) => d.date),
+          datasets: [{
+            label: "Cost (USD)",
+            data: data.daily.map((d) => d.cost_usd),
+            borderColor: p.accent,
+            backgroundColor: p.fill,
+            fill: true,
+            tension: 0.25,
+            pointRadius: 2,
+            pointBackgroundColor: p.accent,
+          }],
+        },
+        options: chartOptions(),
+      });
+    }
+
+    document.documentElement.addEventListener("theme:change", () => {
+      if (overviewData) buildOverviewChart(overviewData);
+    });
+
+    async function loadOverview() {
+      skeletonStats($("#overviewStats"), 2);
+      skeletonTable($("#byUserTable tbody"), 3, 3);
+      skeletonTable($("#byModelTable tbody"), 3, 3);
+
+      let data;
+      try { data = await api("/admin/stats/overview?days=30"); }
+      catch (e) { toast.error(e.message); return; }
+      overviewData = data;
+
+      const grid = $("#overviewStats");
+      clear(grid);
+      grid.appendChild(stat("Total requests", fmtInt(data.total_requests)));
+      grid.appendChild(stat("Total spend", fmtUsd(data.total_cost_usd)));
+
+      buildOverviewChart(data);
+
+      const ub = $("#byUserTable tbody");
+      clear(ub);
+      if (data.by_user.length === 0) {
+        ub.appendChild(emptyTableRow(3, { title: "No usage yet" }));
+      } else {
+        data.by_user.forEach((u) => {
+          ub.appendChild(el("tr", {},
+            el("td", {}, u.email || "—"),
+            el("td", { class: "num" }, fmtInt(u.requests)),
+            el("td", { class: "num" }, fmtUsd(u.cost_usd))));
+        });
+      }
+
+      const mb = $("#byModelTable tbody");
+      clear(mb);
+      if (data.by_model.length === 0) {
+        mb.appendChild(emptyTableRow(3, { title: "No usage yet" }));
+      } else {
+        data.by_model.forEach((m) => {
+          mb.appendChild(el("tr", {},
+            el("td", { class: "mono" }, m.model),
+            el("td", { class: "num" }, fmtInt(m.requests)),
+            el("td", { class: "num" }, fmtUsd(m.cost_usd))));
+        });
+      }
+    }
+
+    function stat(label, value) {
+      return el("div", { class: "stat" },
+        el("div", { class: "label" }, label),
+        el("div", { class: "value" }, value));
+    }
+
+    let keysEnhanced = false;
+    async function loadAllKeys() {
+      const tbody = $("#allKeysTable tbody");
+      skeletonTable(tbody, 5, 8);
+      skeletonStats($("#keysStatGrid"), 2);
+      let keys;
+      try { keys = await api("/api/keys"); }
+      catch (e) { toast.error(e.message); return; }
+      allKeysCache = keys;
+
+      renderKeysStats(keys);
+
+      const sel = $("#keySelect");
+      clear(sel);
+      keys.forEach((k) => sel.appendChild(
+        el("option", { value: k.id }, k.name + " (" + k.key_prefix + "…)")));
+
+      clear(tbody);
+      if (keys.length === 0) {
+        tbody.appendChild(emptyTableRow(8, {
+          icon: "key",
+          title: "No virtual keys yet",
+          message: "Create a key to start routing Claude requests through this proxy.",
+          action: el("button", { class: "btn", onclick: showKeyModal }, "Create your first key"),
+        }));
+        const canvas = $("#keyUsageChart");
+        if (canvas) canvas.style.display = "none";
+        clear($("#keyTotals"));
+        return;
+      }
+
+      const now = Date.now();
+      keys.forEach((k) => {
+        const expired = k.expires_at && new Date(k.expires_at).getTime() < now;
+        const statusClass = !k.is_active ? "off" : (expired ? "warn" : "ok");
+        const statusLabel = !k.is_active ? "disabled" : (expired ? "expired" : "active");
+        const copyBtn = el("button", {
+          class: "btn ghost small icon-only",
+          title: "Copy prefix",
+          onclick: () => copyToClipboard(k.key_prefix),
+        });
+        copyBtn.innerHTML = icons.copy;
+        tbody.appendChild(el("tr", {
+          dataset: { status: statusLabel },
+        },
+          el("td", { "data-label": "Name" }, el("span", { style: "font-weight:600" }, k.name)),
+          el("td", { "data-label": "Prefix", class: "mono muted" }, k.key_prefix + "…"),
+          el("td", { "data-label": "Owner" }, k.user_email || "—"),
+          el("td", { "data-label": "Spend", class: "num" }, fmtUsd(k.spend_usd)),
+          el("td", { "data-label": "Budget", class: "num" }, fmtBudget(k)),
+          el("td", { "data-label": "Expires" }, k.expires_at ? fmtDate(k.expires_at) : "—"),
+          el("td", { "data-label": "Status" },
+            el("span", { class: "badge " + statusClass }, statusLabel)),
+          el("td", { "data-label": "" },
+            el("div", { class: "row", style: "gap:6px;justify-content:flex-end" },
+              copyBtn,
+              el("button", {
+                class: "btn small secondary",
+                onclick: () => showEditKeyModal(k),
+              }, "Edit"),
+              el("button", {
+                class: "btn small secondary",
+                onclick: () => toggleKey(k),
+              }, k.is_active ? "Disable" : "Enable"),
+              el("button", {
+                class: "btn small danger",
+                onclick: () => deleteKey(k),
+              }, "Delete")))));
+      });
+
+      if (!keysEnhanced) {
+        enhance($("#allKeysTable"), {
+          searchPlaceholder: "Search keys / owner…",
+          searchColumns: [0, 1, 2],
+          filters: [
+            { value: "active", label: "Active", test: (tr) => tr.dataset.status === "active" },
+            { value: "disabled", label: "Disabled", test: (tr) => tr.dataset.status === "disabled" },
+            { value: "expired", label: "Expired", test: (tr) => tr.dataset.status === "expired" },
+          ],
+        });
+        keysEnhanced = true;
+      }
+
+      await loadKeyUsage(keys[0].id);
+    }
+
+    function renderKeysStats(keys) {
+      const grid = $("#keysStatGrid");
+      clear(grid);
+      const totalSpend = keys.reduce((a, k) => a + (k.spend_usd || 0), 0);
+      const active = keys.filter((k) => k.is_active).length;
+      grid.appendChild(statWithSub("Keys", String(keys.length), active + " active"));
+      grid.appendChild(stat("Total spend", fmtUsd(totalSpend)));
+    }
+
+    function statWithSub(label, value, sub) {
+      return el("div", { class: "stat" },
+        el("div", { class: "label" }, label),
+        el("div", { class: "value" }, value),
+        sub ? el("div", { class: "delta" }, sub) : null);
+    }
+
+    async function toggleKey(k) {
+      try {
+        await api("/api/keys/" + k.id, { method: "PATCH", body: { is_active: !k.is_active } });
+        toast.success((k.is_active ? "Disabled " : "Enabled ") + k.name);
+      } catch (e) { toast.error(e.message); return; }
+      await loadAllKeys();
+    }
+
+    async function deleteKey(k) {
+      const ok = await confirm({
+        title: "Delete key",
+        message: 'Delete "' + k.name + '"? This cannot be undone.',
+        confirmText: "Delete",
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await api("/api/keys/" + k.id, { method: "DELETE" });
+        toast.success("Key deleted");
+      } catch (e) { toast.error(e.message); return; }
+      await loadAllKeys();
+    }
+
+    function buildKeyUsageChart(labels, values) {
+      if (keyUsageChart) keyUsageChart.destroy();
+      const p = chartPalette();
+      keyUsageChart = new Chart($("#keyUsageChart"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "Cost (USD)",
+            data: values,
+            backgroundColor: p.accent,
+            borderRadius: 4,
+          }],
+        },
+        options: chartOptions(),
+      });
+    }
+
+    async function loadKeyUsage(keyId) {
+      $("#keyUsageChart").style.display = "";
+      const totals = $("#keyTotals");
+      skeletonStats(totals, 4);
+      let data;
+      try { data = await api("/api/stats/keys/" + keyId + "?days=30"); }
+      catch (e) { toast.error(e.message); return; }
+
+      clear(totals);
+      totals.appendChild(stat("Input tokens", fmtInt(data.total_prompt_tokens)));
+      totals.appendChild(stat("Output tokens", fmtInt(data.total_completion_tokens)));
+      totals.appendChild(stat("Cache write", fmtInt(data.total_cache_write_tokens)));
+      totals.appendChild(stat("Cache read", fmtInt(data.total_cache_read_tokens)));
+
+      keyUsageData = {
+        labels: data.daily.map((d) => d.date),
+        values: data.daily.map((d) => d.cost_usd),
+      };
+      buildKeyUsageChart(keyUsageData.labels, keyUsageData.values);
+    }
+
+    function showKeyModal() {
+      const nameInput = el("input", { type: "text", placeholder: "e.g. my-laptop" });
+      const budgetInput = el("input", { type: "number", step: "0.01", placeholder: "Optional, in USD" });
+      const resetSelect = el("select", {},
+        el("option", { value: "" }, "No reset"),
+        el("option", { value: "daily" }, "Daily"),
+        el("option", { value: "weekly" }, "Weekly"),
+        el("option", { value: "monthly" }, "Monthly"),
+      );
+      const expiresInput = el("input", { type: "number", placeholder: "Optional, in days" });
+      const err = el("div", { class: "form-error hidden" });
+      const h = modal((body) => {
+        body.appendChild(el("h2", {}, "Create virtual key"));
+        body.appendChild(el("p", { class: "modal-sub" },
+          "This key will be shown once after creation. Store it securely."));
+        body.appendChild(el("div", { class: "modal-body" },
+          el("div", { class: "field" }, el("label", {}, "Name"), nameInput),
+          el("div", { class: "field" }, el("label", {}, "Budget"), budgetInput),
+          el("div", { class: "field" }, el("label", {}, "Budget reset"), resetSelect),
+          el("div", { class: "field" }, el("label", {}, "Expires in"), expiresInput),
+          err));
+        body.appendChild(el("div", { class: "modal-actions" },
+          el("button", { class: "btn secondary", onclick: () => h.close() }, "Cancel"),
+          el("button", { class: "btn", onclick: submit }, "Create")));
+      });
+      async function submit() {
+        err.classList.add("hidden");
+        try {
+          const body = { name: nameInput.value.trim() || "unnamed" };
+          if (budgetInput.value) body.max_budget_usd = parseFloat(budgetInput.value);
+          if (resetSelect.value) body.budget_reset_period = resetSelect.value;
+          if (expiresInput.value) body.expires_in_days = parseInt(expiresInput.value);
+          const res = await api("/api/keys", { method: "POST", body });
+          h.close();
+          showRevealModal(res.key);
+          keysEnhanced = false;
+          await loadAllKeys();
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+        }
+      }
+    }
+
+    function showRevealModal(key) {
+      const exportCmd = `export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer ${key}"`;
+      const h = modal((body) => {
+        const copyKeyBtn = el("button", {
+          class: "btn small secondary",
+          onclick: () => copyToClipboard(key),
+        });
+        copyKeyBtn.innerHTML = icons.copy + ' <span style="margin-left:4px">Copy</span>';
+
+        const copyCmdBtn = el("button", {
+          class: "btn small secondary",
+          onclick: () => copyToClipboard(exportCmd),
+        });
+        copyCmdBtn.innerHTML = icons.copy + ' <span style="margin-left:4px">Copy</span>';
+
+        body.appendChild(el("h2", {}, "Key created"));
+        body.appendChild(el("p", { class: "modal-sub" },
+          "This is the only time you will see this key. Copy it now."));
+
+        body.appendChild(el("div", { class: "key-reveal" },
+          el("code", {}, key),
+          copyKeyBtn));
+
+        body.appendChild(el("p", {
+          class: "muted",
+          style: "margin:var(--space-4) 0 var(--space-2);font-size:var(--fs-sm)"
+        },
+          "Or copy the ready-to-run export command:"));
+        const cmdBlock = el("div", { class: "code-snippet" },
+          el("pre", {}, el("code", {}, exportCmd)),
+          copyCmdBtn);
+        body.appendChild(cmdBlock);
+
+        body.appendChild(el("div", { class: "callout" },
+          "Anyone with this key can make Claude requests billed to your account."));
+        body.appendChild(el("div", { class: "modal-actions", style: "margin-top:16px" },
+          el("button", { class: "btn", onclick: () => h.close() }, "Done")));
+      });
+    }
+
+    function fmtBudget(k) {
+      if (k.max_budget_usd == null) return "—";
+      const suffix = { daily: "/d", weekly: "/w", monthly: "/mo" }[k.budget_reset_period] || "";
+      return fmtUsd(k.max_budget_usd) + suffix;
+    }
+
+    function showEditKeyModal(k) {
+      const nameInput = el("input", { type: "text", value: k.name });
+      const budgetInput = el("input", {
+        type: "number", step: "0.01", placeholder: "Leave blank for unlimited",
+        value: k.max_budget_usd != null ? k.max_budget_usd : "",
+      });
+      const resetSelect = el("select", {},
+        el("option", { value: "" }, "No reset"),
+        el("option", { value: "daily" }, "Daily"),
+        el("option", { value: "weekly" }, "Weekly"),
+        el("option", { value: "monthly" }, "Monthly"),
+      );
+      resetSelect.value = k.budget_reset_period || "";
+      const expiresInput = el("input", {
+        type: "date",
+        value: k.expires_at ? new Date(k.expires_at).toISOString().slice(0, 10) : "",
+      });
+      const err = el("div", { class: "form-error hidden" });
+      const h = modal((body) => {
+        body.appendChild(el("h2", {}, "Edit key"));
+        body.appendChild(el("div", { class: "modal-body" },
+          el("div", { class: "field" }, el("label", {}, "Name"), nameInput),
+          el("div", { class: "field" }, el("label", {}, "Budget (USD)"), budgetInput),
+          el("div", { class: "field" }, el("label", {}, "Budget reset"), resetSelect),
+          el("div", { class: "field" }, el("label", {}, "Expires on"), expiresInput),
+          err));
+        body.appendChild(el("div", { class: "modal-actions" },
+          el("button", { class: "btn secondary", onclick: () => h.close() }, "Cancel"),
+          el("button", { class: "btn", onclick: submit }, "Save")));
+      });
+      async function submit() {
+        err.classList.add("hidden");
+        try {
+          const body = {
+            name: nameInput.value.trim() || k.name,
+            max_budget_usd: budgetInput.value !== "" ? parseFloat(budgetInput.value) : null,
+            budget_reset_period: resetSelect.value || null,
+            expires_at: expiresInput.value ? new Date(expiresInput.value).toISOString() : null,
+          };
+          await api("/api/keys/" + k.id, { method: "PATCH", body });
+          h.close();
+          toast.success("Key updated");
+          keysEnhanced = false;
+          await loadAllKeys();
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+        }
+      }
+    }
+
+    function showChangePwModal() {
+      const cur = el("input", { type: "password", placeholder: "Current password" });
+      const next = el("input", { type: "password", placeholder: "Min 6 characters" });
+      const err = el("div", { class: "form-error hidden" });
+      const h = modal((body) => {
+        body.appendChild(el("h2", {}, "Change password"));
+        body.appendChild(el("div", { class: "modal-body" },
+          el("div", { class: "field" }, el("label", {}, "Current password"), cur),
+          el("div", { class: "field" }, el("label", {}, "New password"), next),
+          err));
+        body.appendChild(el("div", { class: "modal-actions" },
+          el("button", { class: "btn secondary", onclick: () => h.close() }, "Cancel"),
+          el("button", { class: "btn", onclick: submit }, "Update")));
+      });
+      async function submit() {
+        err.classList.add("hidden");
+        try {
+          await api("/auth/change_password", {
+            method: "POST",
+            body: { current_password: cur.value, new_password: next.value },
+          });
+          h.close();
+          toast.success("Password changed");
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+        }
+      }
+    }
+
+    document.documentElement.addEventListener("theme:change", () => {
+      if (keyUsageData) buildKeyUsageChart(keyUsageData.labels, keyUsageData.values);
+    });
+
+    // ---------------------------------------------------------------------------
+    // MLX panel
+    // ---------------------------------------------------------------------------
+    let mlxPolling = null;
+
+    function renderMlxStatus(data) {
+      const badge = $("#mlxStatusBadge");
+      const startBtn = $("#mlxStartBtn");
+      const stopBtn = $("#mlxStopBtn");
+      const runInfo = $("#mlxRunningInfo");
+
+      const statusMap = {
+        stopped: { text: "stopped", cls: "off" },
+        downloading: { text: "downloading…", cls: "warn" },
+        starting: { text: "starting…", cls: "warn" },
+        running: { text: "running", cls: "ok" },
+        error: { text: "error", cls: "danger" },
+      };
+      const s = statusMap[data.status] || statusMap.stopped;
+      badge.textContent = s.text;
+      badge.className = "badge " + s.cls;
+
+      const busy = data.status === "downloading" || data.status === "starting";
+      startBtn.disabled = busy || data.status === "running";
+      stopBtn.disabled = data.status === "stopped";
+
+      if (data.status === "running" && data.model) {
+        $("#mlxRunningModel").textContent = data.model;
+        runInfo.classList.remove("hidden");
+      } else {
+        runInfo.classList.add("hidden");
+      }
+
+      if (data.error) {
+        toast.error("MLX: " + data.error);
+      }
+    }
+
+    async function loadMlxStatus() {
+      try {
+        const data = await api("/api/mlx/status");
+        renderMlxStatus(data);
+        renderMlxInlineBadge(data);
+        return data;
+      } catch (e) { /* ignore */ }
+      return null;
+    }
+
+    async function loadMlxModels() {
+      try {
+        const data = await api("/api/mlx/models");
+        for (const selId of ["#mlxModelSelect", "#mlxModelSelectInline"]) {
+          const sel = $(selId);
+          if (!sel) continue;
+          clear(sel);
+          for (const m of data.models || []) {
+            const label = m.name + (m.downloaded ? "" : " (will download)");
+            sel.appendChild(el("option", { value: m.name }, label));
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    function preselectMlxModel(name) {
+      if (!name) return;
+      for (const selId of ["#mlxModelSelect", "#mlxModelSelectInline"]) {
+        const sel = $(selId);
+        if (!sel) continue;
+        const has = Array.from(sel.options).some((o) => o.value === name);
+        if (has) sel.value = name;
+      }
+    }
+
+    function toggleMlxModelField() {
+      const isMlx = $("#providerSelect").value === "mlx";
+      $("#mlxModelField").classList.toggle("hidden", !isMlx);
+    }
+
+    function renderMlxInlineBadge(data) {
+      const badge = $("#mlxInlineBadge");
+      if (!badge) return;
+      const map = {
+        stopped: { text: "stopped", cls: "off" },
+        downloading: { text: "downloading…", cls: "warn" },
+        starting: { text: "starting…", cls: "warn" },
+        running: { text: "running", cls: "ok" },
+        error: { text: "error", cls: "danger" },
+      };
+      const s = map[data.status] || map.stopped;
+      badge.textContent = s.text;
+      badge.className = "badge " + s.cls;
+    }
+
+    async function loadMlxLogs() {
+      try {
+        const data = await api("/api/mlx/logs?n=200");
+        const box = $("#mlxLogsBox");
+        box.textContent = (data.logs || []).join("\n");
+        box.scrollTop = box.scrollHeight;
+      } catch (e) { /* ignore */ }
+    }
+
+    function startMlxPoll() {
+      if (mlxPolling) clearInterval(mlxPolling);
+      mlxPolling = setInterval(async () => {
+        const data = await loadMlxStatus();
+        await loadMlxLogs();
+        if (data && (data.status === "running" || data.status === "stopped" || data.status === "error")) {
+          clearInterval(mlxPolling);
+          mlxPolling = null;
+        }
+      }, 2000);
+    }
+
+    function setupMlxHandlers() {
+      $("#mlxStartBtn").addEventListener("click", async () => {
+        const model = $("#mlxModelSelect").value;
+        if (!model) { toast.error("Select a model first"); return; }
+        try {
+          await api("/api/mlx/start", { method: "POST", body: { model } });
+          toast.success("Starting MLX server with " + model + "…");
+          startMlxPoll();
+        } catch (e) { toast.error(e.message); }
+      });
+
+      $("#mlxStopBtn").addEventListener("click", async () => {
+        try {
+          await api("/api/mlx/stop", { method: "POST" });
+          toast.success("MLX server stopped");
+          await loadMlxStatus();
+          await loadMlxLogs();
+        } catch (e) { toast.error(e.message); }
+      });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Provider panel
+    // ---------------------------------------------------------------------------
+    let ssoPolling = null;
+
+    function renderBedrockStatus(status) {
+      const badge = $("#bedrockStatusBadge");
+      const info = $("#bedrockConnectedInfo");
+      const text = $("#bedrockConnectedText");
+      if (status.connected) {
+        badge.textContent = "connected";
+        badge.className = "badge ok";
+        const exp = new Date(status.expires_at);
+        const diffH = Math.round((exp - Date.now()) / 36e5);
+        text.textContent = `${status.role_name} @ ${status.account_id} (${status.region}) — expires in ${diffH}h`;
+        info.classList.remove("hidden");
+      } else {
+        badge.textContent = "not configured";
+        badge.className = "badge off";
+        info.classList.add("hidden");
+      }
+    }
+
+    let awsProfilesByName = {};
+
+    async function loadProvider() {
+      let provData, statusData, profilesData;
+      try {
+        [provData, statusData, profilesData] = await Promise.all([
+          api("/api/bedrock/provider"),
+          api("/api/bedrock/sso/status"),
+          api("/api/bedrock/aws-profiles").catch(() => ({ profiles: [] })),
+        ]);
+      } catch (e) { toast.error(e.message); return; }
+
+      const [mlxStatus] = await Promise.all([loadMlxStatus(), loadMlxModels(), loadMlxLogs()]);
+      preselectMlxModel(mlxStatus?.last_model || mlxStatus?.model);
+
+      $("#providerSelect").value = provData.provider;
+      toggleMlxModelField();
+      $("#awsProfileInput").value = statusData.aws_profile || "";
+      if (statusData.sso_start_url) $("#ssoStartUrl").value = statusData.sso_start_url;
+      if (statusData.region) $("#ssoRegion").value = statusData.region;
+      renderBedrockStatus(statusData);
+
+      const datalist = $("#awsProfilesList");
+      clear(datalist);
+      awsProfilesByName = {};
+      for (const p of profilesData.profiles || []) {
+        awsProfilesByName[p.name] = p;
+        const opt = document.createElement("option");
+        opt.value = p.name;
+        opt.label = `${p.sso_region || "?"} — ${p.sso_role_name || ""}${p.sso_account_id ? " @ " + p.sso_account_id : ""}`;
+        datalist.appendChild(opt);
+      }
+    }
+
+    function applyProfileAutofill() {
+      const name = $("#awsProfileInput").value.trim();
+      const p = awsProfilesByName[name];
+      if (!p) return;
+      if (p.sso_start_url) $("#ssoStartUrl").value = p.sso_start_url;
+      if (p.sso_region) $("#ssoRegion").value = p.sso_region;
+    }
+
+    function setupProviderHandlers() {
+      $("#providerSelect").addEventListener("change", toggleMlxModelField);
+
+      $("#saveProviderBtn").addEventListener("click", async () => {
+        const provider = $("#providerSelect").value;
+        try {
+          await api("/api/bedrock/provider", { method: "POST", body: { provider } });
+          toast.success("Provider saved");
+
+          if (provider === "mlx") {
+            const model = $("#mlxModelSelectInline").value;
+            if (model) {
+              const status = await loadMlxStatus();
+              if (!status || status.status !== "running" || status.model !== model) {
+                await api("/api/mlx/start", { method: "POST", body: { model } });
+                toast.success("Starting MLX server with " + model + "…");
+                startMlxPoll();
+              }
+            }
+          }
+        } catch (e) { toast.error(e.message); }
+      });
+
+      $("#awsProfileInput").addEventListener("change", applyProfileAutofill);
+      $("#awsProfileInput").addEventListener("input", applyProfileAutofill);
+
+      $("#startSsoBtn").addEventListener("click", async () => {
+        const startUrl = $("#ssoStartUrl").value.trim();
+        const region = $("#ssoRegion").value.trim() || "us-east-1";
+        if (!startUrl) { toast.error("SSO start URL is required"); return; }
+        const profileName = $("#awsProfileInput").value.trim();
+        const prof = awsProfilesByName[profileName];
+        const payload = { start_url: startUrl, region };
+        if (prof?.sso_account_id) payload.account_id = prof.sso_account_id;
+        if (prof?.sso_role_name) payload.role_name = prof.sso_role_name;
+
+        // Persist profile name alongside SSO start so status reflects it.
+        if (profileName) {
+          try {
+            await api("/api/bedrock/profile", {
+              method: "POST",
+              body: { aws_profile: profileName }
+            });
+          } catch (_) { /* non-fatal */ }
+        }
+
+        try {
+          const res = await api("/api/bedrock/sso/start", { method: "POST", body: payload });
+          const box = $("#ssoVerifyBox");
+          const link = $("#ssoVerifyLink");
+          link.href = res.verificationUriComplete;
+          link.textContent = res.verificationUriComplete;
+          $("#ssoVerifyStatus").textContent = "Waiting for approval…";
+          box.classList.remove("hidden");
+
+          // Auto-open the verification URL in a new tab.
+          const popup = window.open(res.verificationUriComplete, "_blank", "noopener");
+          if (!popup) toast.error("Popup blocked — click the link to authorize.");
+
+          startSsoPoll();
+        } catch (e) { toast.error(e.message); }
+      });
+
+      $("#disconnectBtn").addEventListener("click", async () => {
+        try {
+          await api("/api/bedrock/sso/disconnect", { method: "DELETE" });
+          toast.success("Disconnected");
+          await loadProvider();
+        } catch (e) { toast.error(e.message); }
+      });
+    }
+
+    function startSsoPoll() {
+      if (ssoPolling) clearInterval(ssoPolling);
+      ssoPolling = setInterval(async () => {
+        try {
+          const res = await api("/api/bedrock/sso/poll");
+          if (res.status === "success") {
+            clearInterval(ssoPolling);
+            ssoPolling = null;
+            $("#ssoVerifyBox").classList.add("hidden");
+            toast.success(`Connected as ${res.role_name} @ ${res.account_id}`);
+            await loadProvider();
+          } else if (res.status === "error") {
+            clearInterval(ssoPolling);
+            ssoPolling = null;
+            $("#ssoVerifyStatus").textContent = "Error: " + res.message;
+          }
+          // status === "pending": keep polling
+        } catch (e) {
+          clearInterval(ssoPolling);
+          ssoPolling = null;
+        }
+      }, 5000);
+    }
+
+    (async () => {
+      me = await requireLogin();
+      renderShell({ me, active: "admin-overview", pageTitle: "Overview" });
+
+      $("#newKeyIcon").innerHTML = icons.plus;
+      $("#newKeyBtn").addEventListener("click", showKeyModal);
+      $("#copyQuickstartIcon").innerHTML = icons.copy;
+      $("#copyQuickstartBtn").addEventListener("click", () => {
+        copyToClipboard($("#quickstartCode").textContent);
+      });
+      $("#keySelect").addEventListener("change", (e) =>
+        loadKeyUsage(parseInt(e.target.value)));
+      $("#changePwBtn")?.addEventListener("click", showChangePwModal);
+      setupProviderHandlers();
+      setupMlxHandlers();
+
+      window.addEventListener("hashchange", () => showPanel(currentPanelFromHash()));
+      showPanel(currentPanelFromHash());
+    })();
+  </script>
+</body>
+
+</html>

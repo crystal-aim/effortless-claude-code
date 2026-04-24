@@ -1,0 +1,288 @@
+/* App shell: sidebar + topbar + content.
+   Mobile-first. Sidebar is a fixed off-canvas drawer on mobile/tablet;
+   on desktop it becomes a permanent fixed panel and the main content
+   is offset by sidebar width. */
+
+body.app {
+  min-height: 100vh;
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: min(82vw, 300px);
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: var(--space-5) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  z-index: 40;
+  transform: translateX(-100%);
+  transition: transform var(--dur) var(--ease);
+  overflow-y: auto;
+}
+.sidebar.open { transform: translateX(0); }
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+  z-index: 30;
+}
+.sidebar-backdrop.show { opacity: 1; pointer-events: auto; }
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  color: var(--text-strong);
+  padding: var(--space-2) var(--space-3);
+  letter-spacing: -0.01em;
+}
+.sidebar-brand .logo {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: var(--accent-contrast);
+  font-weight: 800;
+}
+
+.nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 0;
+  flex: 1 1 auto;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-weight: 500;
+  font-size: var(--fs-md);
+  transition: background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+  white-space: nowrap;
+}
+.nav-link:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+  text-decoration: none;
+}
+.nav-link.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.nav-link .icon {
+  width: 20px; height: 20px; flex: none;
+  display: grid; place-items: center;
+}
+.nav-link .icon svg { width: 18px; height: 18px; }
+
+.sidebar-section-label {
+  padding: 0 var(--space-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--muted-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+/* ---------- Topbar ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--topbar-h);
+  padding: 0 var(--space-4);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: saturate(180%) blur(8px);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .page-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+.topbar .hamburger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  flex: none;
+}
+.topbar .hamburger:hover { background: var(--panel-hover); color: var(--text); }
+
+.topbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.theme-toggle,
+.icon-button {
+  width: 36px; height: 36px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  background: transparent;
+  border: 0;
+}
+.theme-toggle:hover,
+.icon-button:hover { background: var(--panel-hover); color: var(--text); }
+
+.user-chip {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-3) 4px 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.user-chip .avatar {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: var(--fs-xs);
+  display: grid; place-items: center;
+}
+
+/* ---------- Content ---------- */
+.content {
+  padding: var(--space-5) var(--space-4);
+}
+.content-inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+.page-header h1 { margin: 0; font-size: var(--fs-xl); }
+
+/* ---------- Responsive breakpoints ---------- */
+@media (min-width: 768px) {
+  .topbar { padding: 0 var(--space-6); }
+  .content { padding: var(--space-6); }
+}
+
+/* Desktop: sidebar becomes permanent; offset content + topbar. */
+@media (min-width: 1024px) {
+  body.app { padding-left: var(--sidebar-w); }
+  .sidebar {
+    width: var(--sidebar-w);
+    transform: none;
+    transition: none;
+    z-index: 10;
+  }
+  .sidebar-backdrop,
+  .topbar .hamburger { display: none !important; }
+  .user-chip { display: inline-flex; }
+}
+
+/* ---------- Auth page (login) ---------- */
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  position: relative;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, var(--accent-soft), transparent 60%),
+    radial-gradient(800px 500px at -10% 110%, var(--accent-soft), transparent 60%),
+    var(--bg);
+}
+.auth-shell .theme-toggle {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  box-shadow: var(--shadow-lg);
+}
+.auth-card .auth-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  margin-bottom: var(--space-5);
+}
+.auth-card .auth-brand .logo {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: var(--accent-contrast);
+  font-weight: 800;
+}
+.auth-card h1 {
+  font-size: var(--fs-xl);
+  margin-bottom: var(--space-1);
+}
+.auth-card .auth-sub {
+  color: var(--muted);
+  margin-bottom: var(--space-5);
+  font-size: var(--fs-md);
+}
+.auth-card .field { margin-bottom: var(--space-3); }
+.auth-card .btn { width: 100%; padding: 10px 16px; font-size: var(--fs-md); }
+.auth-hint {
+  margin-top: var(--space-5);
+  padding: var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}

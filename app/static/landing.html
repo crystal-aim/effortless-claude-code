@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Claude Croxy — One proxy for Claude, Bedrock & local MLX</title>
+    <meta
+      name="description"
+      content="Self-hosted Anthropic-compatible gateway. Route traffic to Claude, AWS Bedrock, or on-device MLX models with virtual keys, usage stats, and rate limiting."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("theme");
+          var sys = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          document.documentElement.dataset.theme = saved || sys;
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/static/css/tokens.css" />
+    <link rel="stylesheet" href="/static/css/base.css" />
+    <link rel="stylesheet" href="/static/css/components.css" />
+    <style>
+      :root {
+        --landing-max: 1100px;
+        --hero-max: 820px;
+      }
+
+      .landing-wrap { min-height: 100vh; display: flex; flex-direction: column; }
+
+      .landing-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        backdrop-filter: saturate(140%) blur(10px);
+        -webkit-backdrop-filter: saturate(140%) blur(10px);
+        background: color-mix(in srgb, var(--bg) 75%, transparent);
+        border-bottom: 1px solid var(--border);
+      }
+      .landing-nav {
+        max-width: var(--landing-max);
+        margin: 0 auto;
+        padding: 12px 24px;
+        display: flex;
+        align-items: center;
+        gap: var(--space-6);
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        color: var(--text-strong);
+        letter-spacing: -0.01em;
+      }
+      .brand .logo {
+        width: 28px; height: 28px;
+        display: grid; place-items: center;
+        background: var(--accent); color: var(--accent-contrast);
+        border-radius: 8px;
+        font-weight: 800;
+        font-size: 14px;
+      }
+      .brand-sub { color: var(--muted); font-weight: 500; }
+      .landing-nav ul {
+        display: flex;
+        gap: 24px;
+        list-style: none;
+        margin: 0 auto;
+        padding: 0;
+      }
+      .landing-nav ul a {
+        color: var(--muted);
+        font-size: var(--fs-md);
+      }
+      .landing-nav ul a:hover { color: var(--text); }
+      .nav-actions { display: flex; align-items: center; gap: var(--space-2); }
+
+      .theme-toggle {
+        width: 36px; height: 36px;
+        display: grid; place-items: center;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-md);
+        color: var(--muted);
+        background: var(--panel);
+        transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+      }
+      .theme-toggle:hover { color: var(--text); background: var(--panel-hover); }
+
+      .container {
+        max-width: var(--landing-max);
+        margin: 0 auto;
+        padding: 0 24px;
+        width: 100%;
+      }
+
+      /* Hero */
+      .hero {
+        padding: 96px 0 72px;
+        text-align: center;
+        position: relative;
+      }
+      .hero::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 420px;
+        background:
+          radial-gradient(600px 280px at 50% 0%, var(--accent-soft), transparent 70%);
+        pointer-events: none;
+      }
+      .hero > * { position: relative; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: var(--radius-pill);
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: var(--fs-sm);
+        font-weight: 600;
+        margin-bottom: 20px;
+      }
+      .badge .dot {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 0 3px var(--success-soft);
+      }
+      .hero h1 {
+        font-size: clamp(32px, 4.6vw, 52px);
+        line-height: 1.08;
+        letter-spacing: -0.02em;
+        font-weight: 700;
+        max-width: var(--hero-max);
+        margin: 0 auto 18px;
+      }
+      .hero h1 em {
+        font-style: normal;
+        color: var(--accent);
+      }
+      .hero .lede {
+        font-size: 17px;
+        color: var(--muted);
+        max-width: 640px;
+        margin: 0 auto 28px;
+      }
+      .hero-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      /* Sections */
+      section.block { padding: 72px 0; border-top: 1px solid var(--border); }
+      .section-head { text-align: center; margin-bottom: 40px; }
+      .section-head h2 {
+        font-size: clamp(22px, 2.6vw, 30px);
+        letter-spacing: -0.01em;
+      }
+      .section-head p {
+        color: var(--muted);
+        margin-top: 8px;
+        font-size: var(--fs-lg);
+      }
+
+      /* Features */
+      .features {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+      .feature {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 22px;
+        transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+      }
+      .feature:hover {
+        border-color: var(--border-strong);
+        transform: translateY(-2px);
+      }
+      .feature-icon {
+        width: 36px; height: 36px;
+        display: grid; place-items: center;
+        background: var(--accent-soft);
+        color: var(--accent);
+        border-radius: 8px;
+        margin-bottom: 14px;
+      }
+      .feature h3 {
+        font-size: var(--fs-lg);
+        color: var(--text-strong);
+        margin-bottom: 6px;
+      }
+      .feature p {
+        color: var(--muted);
+        font-size: var(--fs-base);
+      }
+
+      /* Backends */
+      .backends-bg { background: var(--bg-elev); }
+      .backends {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+      .backend {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 22px;
+      }
+      .backend-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .backend-head h3 {
+        font-size: var(--fs-lg);
+        color: var(--text-strong);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 10px;
+        border-radius: var(--radius-pill);
+        font-size: var(--fs-xs);
+        font-weight: 600;
+        background: var(--success-soft);
+        color: var(--success);
+      }
+      .pill .dot {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: var(--success);
+      }
+      .backend ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        color: var(--muted);
+        font-size: var(--fs-base);
+      }
+      .backend li {
+        padding: 5px 0;
+        display: flex;
+        gap: 8px;
+      }
+      .backend li::before {
+        content: "→";
+        color: var(--accent);
+        flex-shrink: 0;
+      }
+
+      /* Quickstart */
+      .code {
+        background: var(--bg-elev);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px 22px;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--text);
+        overflow-x: auto;
+        max-width: 760px;
+        margin: 0 auto;
+        line-height: 1.7;
+        box-shadow: var(--shadow-sm);
+      }
+      .code .cmt { color: var(--muted-2); }
+      .code .kw  { color: var(--accent); }
+      .code .str { color: var(--success); }
+
+      /* Footer */
+      .landing-footer {
+        border-top: 1px solid var(--border);
+        padding: 28px 0;
+        margin-top: auto;
+        color: var(--muted);
+        font-size: var(--fs-md);
+      }
+      .footer-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-3);
+      }
+      .footer-row ul {
+        display: flex;
+        gap: 20px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      @media (max-width: 720px) {
+        .landing-nav ul { display: none; }
+        .hero { padding: 72px 0 56px; }
+        section.block { padding: 56px 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="landing-wrap">
+      <header class="landing-header">
+        <nav class="landing-nav" aria-label="Primary">
+          <a class="brand" href="/">
+            <span class="logo">C</span>
+            <span>Claude Code Max <span class="brand-sub">Croxy</span></span>
+          </a>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#backends">Backends</a></li>
+            <li><a href="#quickstart">Quickstart</a></li>
+          </ul>
+          <div class="nav-actions">
+            <button class="theme-toggle" id="themeToggle" title="Toggle theme" aria-label="Toggle theme"></button>
+            <a class="btn" href="/ui/admin">Open dashboard</a>
+          </div>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div class="container">
+            <span class="badge"><span class="dot"></span> v0.2.0 · FastAPI · Self-hosted</span>
+            <h1>One proxy for <em>Claude</em>, Bedrock, and local MLX models.</h1>
+            <p class="lede">
+              A drop-in, Anthropic-compatible gateway that routes traffic to Claude,
+              AWS Bedrock, or on-device MLX models — with virtual keys, usage stats,
+              rate limiting, and a clean admin UI built in.
+            </p>
+            <div class="hero-actions">
+              <a href="/ui/admin" class="btn">Launch dashboard</a>
+              <a href="#quickstart" class="btn secondary">View quickstart</a>
+            </div>
+          </div>
+        </section>
+
+        <section id="features" class="block">
+          <div class="container">
+            <div class="section-head">
+              <h2>Everything you need in one gateway</h2>
+              <p>Anthropic-compatible endpoints, multi-backend routing, and per-user accountability.</p>
+            </div>
+            <div class="features">
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>
+                </div>
+                <h3>Multi-backend routing</h3>
+                <p>Forward traffic to Anthropic, AWS Bedrock, or local MLX — chosen per request or by rule.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l7-7 3 3-7 7"/><path d="M14 9l3 3"/></svg>
+                </div>
+                <h3>Virtual API keys</h3>
+                <p>Issue, rotate, and revoke keys per user. Every request is authenticated and attributed.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
+                </div>
+                <h3>Usage &amp; cost stats</h3>
+                <p>Track tokens, cache hits, and dollar cost per model using configurable pricing tables.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg>
+                </div>
+                <h3>Rate limiting</h3>
+                <p>Per-minute caps on proxy and login endpoints protect upstream quotas and shared budgets.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M3 12h18"/></svg>
+                </div>
+                <h3>Keyword routing</h3>
+                <p>Route "deep reasoning" to Opus, "quick" to Haiku — fully driven by <span class="mono">config.yaml</span>.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>
+                </div>
+                <h3>Local MLX inference</h3>
+                <p>Spin up Gemma, Qwen, Llama, or Mistral on Apple Silicon for free, offline inference.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 18a5 5 0 0 0-2-9.6A6 6 0 0 0 4 10a4 4 0 0 0 0 8h13z"/></svg>
+                </div>
+                <h3>AWS SSO ready</h3>
+                <p>Bedrock backend reuses AWS SSO profiles — no static credentials in config files.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-3.5 9-9 10-5.5-1-9-5-9-10V6z"/></svg>
+                </div>
+                <h3>Admin dashboard</h3>
+                <p>Manage users, keys, backends, and live usage from a clean web UI — included.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="backends" class="block backends-bg">
+          <div class="container">
+            <div class="section-head">
+              <h2>Pick the backend that fits</h2>
+              <p>Mix and match — use the right model for each job.</p>
+            </div>
+            <div class="backends">
+              <article class="backend">
+                <div class="backend-head">
+                  <h3>Claude</h3>
+                  <span class="pill"><span class="dot"></span> Default</span>
+                </div>
+                <ul>
+                  <li>Direct to <span class="mono">api.anthropic.com</span></li>
+                  <li>Opus 4.7, Sonnet 4.6, Haiku 4.5</li>
+                  <li>Uses your Max subscription</li>
+                </ul>
+              </article>
+
+              <article class="backend">
+                <div class="backend-head">
+                  <h3>AWS Bedrock</h3>
+                  <span class="pill"><span class="dot"></span> SSO</span>
+                </div>
+                <ul>
+                  <li>Global Anthropic model IDs</li>
+                  <li>SSO-based authentication</li>
+                  <li>Region-aware (us-east-1, …)</li>
+                </ul>
+              </article>
+
+              <article class="backend">
+                <div class="backend-head">
+                  <h3>Local MLX</h3>
+                  <span class="pill"><span class="dot"></span> Free</span>
+                </div>
+                <ul>
+                  <li>Gemma 4 · Qwen 2.5 · Llama 3.1 · Mistral</li>
+                  <li>Runs on-device, Apple Silicon</li>
+                  <li>Zero-cost inference</li>
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="quickstart" class="block">
+          <div class="container">
+            <div class="section-head">
+              <h2>Get running in seconds</h2>
+              <p>Point your Anthropic SDK at the proxy — that's it.</p>
+            </div>
+<pre class="code"><span class="cmt"># 1. Start the proxy</span>
+<span class="kw">uvicorn</span> app.main:app --host 0.0.0.0 --port 4000
+
+<span class="cmt"># 2. Issue a virtual key from the admin dashboard (/ui/admin)</span>
+<span class="cmt">#    then point the Anthropic SDK at the proxy</span>
+<span class="kw">export</span> ANTHROPIC_BASE_URL=<span class="str">"http://localhost:4000"</span>
+<span class="kw">export</span> ANTHROPIC_API_KEY=<span class="str">"ccm_your_issued_key"</span>
+
+<span class="kw">python</span> -c <span class="str">"import anthropic; print(anthropic.Anthropic().messages.create(
+  model='claude-sonnet-4-6',
+  max_tokens=64,
+  messages=[{'role':'user','content':'hi'}]))"</span></pre>
+          </div>
+        </section>
+      </main>
+
+      <footer class="landing-footer">
+        <div class="container footer-row">
+          <div>Claude Code Max Croxy · self-hosted Anthropic-compatible gateway</div>
+          <ul>
+            <li><a href="/ui/admin">Admin</a></li>
+            <li><a href="/ui/login">Sign in</a></li>
+            <li><a href="/healthz">Health</a></li>
+          </ul>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module">
+      import { toggleTheme, getTheme } from "/static/js/theme.js";
+      import { icons } from "/static/js/ui.js";
+
+      const themeBtn = document.getElementById("themeToggle");
+      function paintThemeIcon() {
+        themeBtn.innerHTML = getTheme() === "light" ? icons.moon : icons.sun;
+      }
+      paintThemeIcon();
+      themeBtn.addEventListener("click", () => { toggleTheme(); paintThemeIcon(); });
+      document.documentElement.addEventListener("theme:change", paintThemeIcon);
+    </script>
+  </body>
+</html>

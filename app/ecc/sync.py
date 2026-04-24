@@ -93,22 +93,4 @@ def _git(args: list[str]) -> str:
     return r.stdout if r.returncode == 0 else ""
 
 
-def _read_setting(key: str) -> Optional[str]:
-    from app.db import session_scope
-    from app.models import Setting
-
-    with session_scope() as db:
-        row = db.get(Setting, key)
-        return row.value if row else None
-
-
-def _write_setting(key: str, value: str) -> None:
-    from app.db import session_scope
-    from app.models import Setting
-
-    with session_scope() as db:
-        row = db.get(Setting, key)
-        if row is None:
-            db.add(Setting(key=key, value=value))
-        else:
-            row.value = value
+from app.db import read_setting as _read_setting, write_setting as _write_setting

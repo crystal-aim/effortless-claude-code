@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8" />
-  <title>Admin — Claude Code Max Croxy</title>
+  <title>Admin — Claude Code Croxy</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script>
@@ -200,34 +200,9 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
           </div>
         </div>
 
-        <div class="card">
-          <div class="card-header">
-            <h2>MLX Local Inference</h2>
-            <div class="grow"></div>
-            <span id="mlxStatusBadge" class="badge off">stopped</span>
-          </div>
-          <p class="muted" style="margin:0 0 var(--space-4)">Run Gemma 4 models locally via mlx-vlm. Models are
-            downloaded automatically on first use.</p>
-          <div class="form-stack">
-            <div class="field">
-              <label>Model</label>
-              <select id="mlxModelSelect"></select>
-            </div>
-          </div>
-          <div class="form-actions" style="gap:8px;display:flex">
-            <button class="btn" id="mlxStartBtn">Start</button>
-            <button class="btn secondary" id="mlxStopBtn" disabled>Stop</button>
-          </div>
-          <div id="mlxRunningInfo" class="hidden" style="margin-top:var(--space-3)">
-            <p class="muted" style="margin:0"><strong>Running:</strong> <span id="mlxRunningModel"></span></p>
-          </div>
-          <details id="mlxLogsDetails" style="margin-top:var(--space-4)">
-            <summary style="cursor:pointer;font-weight:600;font-size:var(--fs-sm)">Server logs</summary>
-            <pre id="mlxLogsBox"
-              style="max-height:260px;overflow-y:auto;font-size:var(--fs-xs);background:var(--surface-2);border-radius:var(--radius);padding:var(--space-3);margin-top:var(--space-2);white-space:pre-wrap;word-break:break-all"></pre>
-          </details>
-        </div>
       </section>
+
+      <section id="panel-mlx" class="panel hidden"></section>
 
       <section id="panel-ecc" class="panel hidden"></section>
     </div>
@@ -258,6 +233,7 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
       overview: "Overview",
       keys: "Virtual keys",
       provider: "Provider settings",
+      mlx: "MLX Local Inference",
       ecc: "Claude Setup",
     };
 
@@ -271,12 +247,13 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
       if (name === "keys") loadAllKeys();
       if (name === "overview") loadOverview();
       if (name === "provider") loadProvider();
+      if (name === "mlx") loadMlx();
       if (name === "ecc") loadSetup();
     }
 
     function currentPanelFromHash() {
       const h = (location.hash || "").replace("#", "");
-      if (h === "keys" || h === "provider" || h === "ecc") return h;
+      if (h === "keys" || h === "provider" || h === "mlx" || h === "ecc") return h;
       return "overview";
     }
 
@@ -709,66 +686,40 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
     });
 
     // ---------------------------------------------------------------------------
-    // MLX panel
+    // MLX panel (dedicated page + inline provider badge)
     // ---------------------------------------------------------------------------
     let mlxPolling = null;
+    const MLX_STATUS_MAP = {
+      stopped:     { text: "stopped",       cls: "off" },
+      downloading: { text: "downloading…",  cls: "warn" },
+      starting:    { text: "starting…",     cls: "warn" },
+      running:     { text: "running",       cls: "ok" },
+      error:       { text: "error",         cls: "danger" },
+    };
 
-    function renderMlxStatus(data) {
-      const badge = $("#mlxStatusBadge");
-      const startBtn = $("#mlxStartBtn");
-      const stopBtn = $("#mlxStopBtn");
-      const runInfo = $("#mlxRunningInfo");
-
-      const statusMap = {
-        stopped: { text: "stopped", cls: "off" },
-        downloading: { text: "downloading…", cls: "warn" },
-        starting: { text: "starting…", cls: "warn" },
-        running: { text: "running", cls: "ok" },
-        error: { text: "error", cls: "danger" },
-      };
-      const s = statusMap[data.status] || statusMap.stopped;
+    function renderMlxInlineBadge(data) {
+      const badge = $("#mlxInlineBadge");
+      if (!badge) return;
+      const s = MLX_STATUS_MAP[data.status] || MLX_STATUS_MAP.stopped;
       badge.textContent = s.text;
       badge.className = "badge " + s.cls;
-
-      const busy = data.status === "downloading" || data.status === "starting";
-      startBtn.disabled = busy || data.status === "running";
-      stopBtn.disabled = data.status === "stopped";
-
-      if (data.status === "running" && data.model) {
-        $("#mlxRunningModel").textContent = data.model;
-        runInfo.classList.remove("hidden");
-      } else {
-        runInfo.classList.add("hidden");
-      }
-
-      if (data.error) {
-        toast.error("MLX: " + data.error);
-      }
     }
 
-    async function loadMlxStatus() {
-      try {
-        const data = await api("/api/mlx/status");
-        renderMlxStatus(data);
-        renderMlxInlineBadge(data);
-        return data;
-      } catch (e) { /* ignore */ }
-      return null;
+    function toggleMlxModelField() {
+      const isMlx = $("#providerSelect").value === "mlx";
+      $("#mlxModelField").classList.toggle("hidden", !isMlx);
     }
 
-    async function loadMlxModels() {
-      try {
-        const data = await api("/api/mlx/models");
-        for (const selId of ["#mlxModelSelect", "#mlxModelSelectInline"]) {
-          const sel = $(selId);
-          if (!sel) continue;
-          clear(sel);
-          for (const m of data.models || []) {
-            const label = m.name + (m.downloaded ? "" : " (will download)");
-            sel.appendChild(el("option", { value: m.name }, label));
-          }
+    async function populateMlxSelects(models) {
+      for (const selId of ["#mlxModelSelect", "#mlxModelSelectInline"]) {
+        const sel = $(selId);
+        if (!sel) continue;
+        clear(sel);
+        for (const m of models) {
+          const label = m.name + (m.downloaded ? "" : " (will download)");
+          sel.appendChild(el("option", { value: m.name }, label));
         }
-      } catch (e) { /* ignore */ }
+      }
     }
 
     function preselectMlxModel(name) {
@@ -781,40 +732,27 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
       }
     }
 
-    function toggleMlxModelField() {
-      const isMlx = $("#providerSelect").value === "mlx";
-      $("#mlxModelField").classList.toggle("hidden", !isMlx);
+    async function fetchMlxStatus() {
+      try { return await api("/api/mlx/status"); }
+      catch (e) { return null; }
     }
 
-    function renderMlxInlineBadge(data) {
-      const badge = $("#mlxInlineBadge");
-      if (!badge) return;
-      const map = {
-        stopped: { text: "stopped", cls: "off" },
-        downloading: { text: "downloading…", cls: "warn" },
-        starting: { text: "starting…", cls: "warn" },
-        running: { text: "running", cls: "ok" },
-        error: { text: "error", cls: "danger" },
-      };
-      const s = map[data.status] || map.stopped;
-      badge.textContent = s.text;
-      badge.className = "badge " + s.cls;
-    }
-
-    async function loadMlxLogs() {
+    async function fetchMlxModels() {
       try {
-        const data = await api("/api/mlx/logs?n=200");
-        const box = $("#mlxLogsBox");
-        box.textContent = (data.logs || []).join("\n");
-        box.scrollTop = box.scrollHeight;
-      } catch (e) { /* ignore */ }
+        const data = await api("/api/mlx/models");
+        return data.models || [];
+      } catch (e) { return []; }
     }
 
     function startMlxPoll() {
       if (mlxPolling) clearInterval(mlxPolling);
       mlxPolling = setInterval(async () => {
-        const data = await loadMlxStatus();
-        await loadMlxLogs();
+        const data = await fetchMlxStatus();
+        if (data) {
+          renderMlxInlineBadge(data);
+          renderMlxPageStatus(data);
+        }
+        renderMlxPageLogs();
         if (data && (data.status === "running" || data.status === "stopped" || data.status === "error")) {
           clearInterval(mlxPolling);
           mlxPolling = null;
@@ -822,9 +760,104 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
       }, 2000);
     }
 
-    function setupMlxHandlers() {
-      $("#mlxStartBtn").addEventListener("click", async () => {
-        const model = $("#mlxModelSelect").value;
+    function renderMlxPageStatus(data) {
+      const badge = $("#mlxStatusBadge");
+      if (!badge) return;
+      const s = MLX_STATUS_MAP[data.status] || MLX_STATUS_MAP.stopped;
+      badge.textContent = s.text;
+      badge.className = "badge " + s.cls;
+
+      const startBtn = $("#mlxStartBtn");
+      const stopBtn = $("#mlxStopBtn");
+      const runInfo = $("#mlxRunningInfo");
+      if (!startBtn) return;
+
+      const busy = data.status === "downloading" || data.status === "starting";
+      startBtn.disabled = busy || data.status === "running";
+      stopBtn.disabled = data.status === "stopped";
+
+      if (data.status === "running" && data.model) {
+        $("#mlxRunningModel").textContent = data.model;
+        runInfo.classList.remove("hidden");
+      } else {
+        runInfo.classList.add("hidden");
+      }
+      if (data.error) toast.error("MLX: " + data.error);
+    }
+
+    async function renderMlxPageLogs() {
+      const box = $("#mlxLogsBox");
+      if (!box) return;
+      try {
+        const data = await api("/api/mlx/logs?n=200");
+        box.textContent = (data.logs || []).join("\n");
+        box.scrollTop = box.scrollHeight;
+      } catch (e) { /* ignore */ }
+    }
+
+    async function loadMlx() {
+      const pane = $("#panel-mlx");
+      if (!pane) return;
+      clear(pane);
+
+      const [statusData, models] = await Promise.all([fetchMlxStatus(), fetchMlxModels()]);
+
+      const statusBadge = el("span", { id: "mlxStatusBadge", class: "badge off" }, "stopped");
+      const modelSelect = el("select", { id: "mlxModelSelect" });
+      const startBtn = el("button", { class: "btn", id: "mlxStartBtn" }, "Start");
+      const stopBtn = el("button", { class: "btn secondary", id: "mlxStopBtn", disabled: true }, "Stop");
+      const runInfo = el("div", { id: "mlxRunningInfo", class: "hidden", style: "margin-top:var(--space-3)" },
+        el("p", { class: "muted", style: "margin:0" }, el("strong", {}, "Running: "), el("span", { id: "mlxRunningModel" })));
+      const logsBox = el("pre", {
+        id: "mlxLogsBox",
+        style: "max-height:260px;overflow-y:auto;font-size:var(--fs-xs);background:var(--surface-2);border-radius:var(--radius);padding:var(--space-3);margin-top:var(--space-2);white-space:pre-wrap;word-break:break-all",
+      });
+
+      const statusCard = el("div", { class: "card" },
+        el("div", { class: "card-header" }, el("h2", {}, "MLX Server"), el("div", { class: "grow" }), statusBadge),
+        el("p", { class: "muted", style: "margin:0 0 var(--space-4)" },
+          "Run open-source models locally on Apple Silicon. Models are downloaded automatically on first use."),
+        el("div", { class: "form-stack" },
+          el("div", { class: "field" }, el("label", {}, "Model"), modelSelect)),
+        el("div", { class: "form-actions", style: "gap:8px;display:flex" }, startBtn, stopBtn),
+        runInfo,
+        el("details", { style: "margin-top:var(--space-4)" },
+          el("summary", { style: "cursor:pointer;font-weight:600;font-size:var(--fs-sm)" }, "Server logs"),
+          logsBox),
+      );
+      pane.appendChild(statusCard);
+
+      const port = statusData?.port || 8899;
+      pane.appendChild(el("div", { class: "info-box", style: "margin-top:var(--space-3);font-size:var(--fs-sm)" },
+        "Server URL: ", el("code", {}, `http://localhost:${port}`),
+        " — use this for Token Filter MLX mode.",
+      ));
+
+      // Populate model selects (both page and provider inline)
+      for (const m of models) {
+        const label = m.name + (m.downloaded ? "" : " (will download)");
+        modelSelect.appendChild(el("option", { value: m.name }, label));
+      }
+      // Also populate the inline select on provider page
+      const inlineSel = $("#mlxModelSelectInline");
+      if (inlineSel) {
+        clear(inlineSel);
+        for (const m of models) {
+          const label = m.name + (m.downloaded ? "" : " (will download)");
+          inlineSel.appendChild(el("option", { value: m.name }, label));
+        }
+      }
+
+      if (statusData) {
+        renderMlxPageStatus(statusData);
+        renderMlxInlineBadge(statusData);
+        preselectMlxModel(statusData.last_model || statusData.model);
+      }
+      renderMlxPageLogs();
+
+      // Bind handlers
+      startBtn.addEventListener("click", async () => {
+        const model = modelSelect.value;
         if (!model) { toast.error("Select a model first"); return; }
         try {
           await api("/api/mlx/start", { method: "POST", body: { model } });
@@ -832,13 +865,13 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
           startMlxPoll();
         } catch (e) { toast.error(e.message); }
       });
-
-      $("#mlxStopBtn").addEventListener("click", async () => {
+      stopBtn.addEventListener("click", async () => {
         try {
           await api("/api/mlx/stop", { method: "POST" });
           toast.success("MLX server stopped");
-          await loadMlxStatus();
-          await loadMlxLogs();
+          const data = await fetchMlxStatus();
+          if (data) { renderMlxPageStatus(data); renderMlxInlineBadge(data); }
+          renderMlxPageLogs();
         } catch (e) { toast.error(e.message); }
       });
     }
@@ -878,7 +911,9 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
         ]);
       } catch (e) { toast.error(e.message); return; }
 
-      const [mlxStatus] = await Promise.all([loadMlxStatus(), loadMlxModels(), loadMlxLogs()]);
+      const [mlxStatus, mlxModels] = await Promise.all([fetchMlxStatus(), fetchMlxModels()]);
+      await populateMlxSelects(mlxModels);
+      if (mlxStatus) renderMlxInlineBadge(mlxStatus);
       preselectMlxModel(mlxStatus?.last_model || mlxStatus?.model);
 
       $("#providerSelect").value = provData.provider;
@@ -920,7 +955,7 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
           if (provider === "mlx") {
             const model = $("#mlxModelSelectInline").value;
             if (model) {
-              const status = await loadMlxStatus();
+              const status = await fetchMlxStatus();
               if (!status || status.status !== "running" || status.model !== model) {
                 await api("/api/mlx/start", { method: "POST", body: { model } });
                 toast.success("Starting MLX server with " + model + "…");
@@ -1018,7 +1053,6 @@ export ANTHROPIC_CUSTOM_HEADERS="x-cc-api-key: Bearer sk-ccm-xxxxxxxxxxxxxxxxxxx
         loadKeyUsage(parseInt(e.target.value)));
       $("#changePwBtn")?.addEventListener("click", showChangePwModal);
       setupProviderHandlers();
-      setupMlxHandlers();
 
       window.addEventListener("hashchange", () => showPanel(currentPanelFromHash()));
       showPanel(currentPanelFromHash());

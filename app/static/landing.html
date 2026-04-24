@@ -2,10 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Claude Croxy — One proxy for Claude, Bedrock & local MLX</title>
+    <title>Claude Croxy — Save 60-98% tokens with local LLM filtering for Claude Code</title>
     <meta
       name="description"
-      content="Self-hosted Anthropic-compatible gateway. Route traffic to Claude, AWS Bedrock, or on-device MLX models with virtual keys, usage stats, and rate limiting."
+      content="Hybrid token filter for Claude Code: regex + local MLX inference on Apple Silicon. Rewrites verbose CLI commands before execution — 60-98% token savings without breaking prompt caching. Also a full Anthropic-compatible gateway with multi-backend routing."
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -261,6 +261,57 @@
         flex-shrink: 0;
       }
 
+      /* Token Filter showcase */
+      .showcase-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-top: 32px;
+      }
+      @media (max-width: 720px) { .showcase-grid { grid-template-columns: 1fr; } }
+      .showcase-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+      }
+      .showcase-card h3 { color: var(--text-strong); margin-bottom: 12px; }
+      .showcase-card .metric {
+        font-size: clamp(28px, 3vw, 40px);
+        font-weight: 700;
+        color: var(--accent);
+        line-height: 1.1;
+      }
+      .showcase-card .metric-label {
+        font-size: var(--fs-sm);
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .arch-box {
+        background: var(--bg-elev);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px 22px;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--text);
+        line-height: 1.6;
+        overflow-x: auto;
+        margin-top: 20px;
+      }
+      .arch-box .layer { color: var(--accent); font-weight: 600; }
+      .arch-box .timing { color: var(--muted); }
+      .platform-note {
+        text-align: center;
+        margin-top: 24px;
+        padding: 14px 20px;
+        background: var(--accent-soft);
+        border-radius: var(--radius-lg);
+        font-size: var(--fs-sm);
+        color: var(--accent);
+        font-weight: 500;
+      }
+
       /* Quickstart */
       .code {
         background: var(--bg-elev);
@@ -316,9 +367,10 @@
         <nav class="landing-nav" aria-label="Primary">
           <a class="brand" href="/">
             <span class="logo">C</span>
-            <span>Claude Code Max <span class="brand-sub">Croxy</span></span>
+            <span>Claude Code <span class="brand-sub">Croxy</span></span>
           </a>
           <ul>
+            <li><a href="#token-filter">Token Filter</a></li>
             <li><a href="#features">Features</a></li>
             <li><a href="#backends">Backends</a></li>
             <li><a href="#quickstart">Quickstart</a></li>
@@ -333,16 +385,79 @@
       <main>
         <section class="hero">
           <div class="container">
-            <span class="badge"><span class="dot"></span> v0.2.0 · FastAPI · Self-hosted</span>
-            <h1>One proxy for <em>Claude</em>, Bedrock, and local MLX models.</h1>
+            <span class="badge"><span class="dot"></span> Apple Silicon · MLX · Self-hosted</span>
+            <h1>Save <em>60–98% tokens</em> in Claude Code with local LLM filtering.</h1>
             <p class="lede">
-              A drop-in, Anthropic-compatible gateway that routes traffic to Claude,
-              AWS Bedrock, or on-device MLX models — with virtual keys, usage stats,
-              rate limiting, and a clean admin UI built in.
+              A hybrid PreToolUse hook that rewrites verbose CLI commands before execution —
+              regex fast path for known commands, local MLX inference for everything else.
+              No cloud calls, no prompt cache breakage. Runs entirely on your Mac.
             </p>
             <div class="hero-actions">
               <a href="/ui/admin" class="btn">Launch dashboard</a>
-              <a href="#quickstart" class="btn secondary">View quickstart</a>
+              <a href="#token-filter" class="btn secondary">How it works</a>
+            </div>
+          </div>
+        </section>
+
+        <section id="token-filter" class="block">
+          <div class="container">
+            <div class="section-head">
+              <h2>Hybrid Token Filter — regex + local LLM</h2>
+              <p>A PreToolUse hook that intercepts CLI commands and rewrites them with output truncation before execution.</p>
+            </div>
+
+            <div class="showcase-grid">
+              <div class="showcase-card">
+                <h3>Command Classification</h3>
+                <div class="metric">98%</div>
+                <div class="metric-label">command coverage (vs 46% regex-only)</div>
+                <p style="margin-top:14px;color:var(--muted);font-size:var(--fs-sm)">
+                  Regex handles 19 known commands instantly. MLX classifies 21 more —
+                  <code>kubectl</code>, <code>terraform</code>, <code>brew</code>, <code>pip</code>,
+                  compound <code>&&</code> chains — at ~370ms overhead.
+                </p>
+              </div>
+              <div class="showcase-card">
+                <h3>Output Summarization</h3>
+                <div class="metric">98%</div>
+                <div class="metric-label">token savings on large outputs</div>
+                <p style="margin-top:14px;color:var(--muted);font-size:var(--fs-sm)">
+                  Very verbose outputs (git diff, build logs, JSON APIs) are piped through
+                  a local MLX summarizer that extracts errors, warnings, and key data.
+                  Head truncation achieves 27% — MLX achieves 98%.
+                </p>
+              </div>
+              <div class="showcase-card">
+                <h3>Why PreToolUse?</h3>
+                <p style="color:var(--muted);font-size:var(--fs-sm)">
+                  Filtering at the proxy level breaks Anthropic's prompt caching — cache keys are exact-match.
+                  A cache miss on Sonnet costs <strong>10x</strong> ($3 vs $0.30 per 1M tokens).
+                  The PreToolUse hook rewrites the command before it runs, so the truncated output
+                  is what enters the conversation. Caching works normally.
+                </p>
+              </div>
+              <div class="showcase-card">
+                <h3>Zero Cloud Dependency</h3>
+                <p style="color:var(--muted);font-size:var(--fs-sm)">
+                  The MLX model runs locally on your Mac via Apple's MLX framework.
+                  No API calls, no data leaving your machine, no per-token cost.
+                  Recommended model: <code>Qwen2.5-7B-Instruct-4bit</code> or
+                  <code>gemma-4-e2b-it</code> for speed.
+                </p>
+              </div>
+            </div>
+
+            <div class="arch-box">
+<span class="layer">Bash command</span> → PreToolUse Hook
+  ├─ <span class="layer">Layer 1: Regex</span> <span class="timing">(&lt;1ms)</span> — git, find, grep, cat, pytest, docker, ls, ps
+  ├─ <span class="layer">Layer 2: MLX classify</span> <span class="timing">(~370ms)</span> — SKIP | HEAD | TAIL | SUMMARIZE
+  └─ <span class="layer">Layer 3: MLX summarize</span> <span class="timing">(~5-22s)</span> — intelligent extraction for very large output
+
+  Fallback: MLX server down → regex-only mode (no error, no hang)
+            </div>
+
+            <div class="platform-note">
+              Requires Apple Silicon Mac (M1/M2/M3/M4) — MLX framework runs on Apple GPU only. Other platforms coming soon.
             </div>
           </div>
         </section>
@@ -354,44 +469,12 @@
               <p>Anthropic-compatible endpoints, multi-backend routing, and per-user accountability.</p>
             </div>
             <div class="features">
-              <article class="feature">
+              <article class="feature" style="border-color:var(--accent);border-width:2px">
                 <div class="feature-icon" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>
                 </div>
-                <h3>Multi-backend routing</h3>
-                <p>Forward traffic to Anthropic, AWS Bedrock, or local MLX — chosen per request or by rule.</p>
-              </article>
-
-              <article class="feature">
-                <div class="feature-icon" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l7-7 3 3-7 7"/><path d="M14 9l3 3"/></svg>
-                </div>
-                <h3>Virtual API keys</h3>
-                <p>Issue, rotate, and revoke keys per user. Every request is authenticated and attributed.</p>
-              </article>
-
-              <article class="feature">
-                <div class="feature-icon" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
-                </div>
-                <h3>Usage &amp; cost stats</h3>
-                <p>Track tokens, cache hits, and dollar cost per model using configurable pricing tables.</p>
-              </article>
-
-              <article class="feature">
-                <div class="feature-icon" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg>
-                </div>
-                <h3>Rate limiting</h3>
-                <p>Per-minute caps on proxy and login endpoints protect upstream quotas and shared budgets.</p>
-              </article>
-
-              <article class="feature">
-                <div class="feature-icon" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M3 12h18"/></svg>
-                </div>
-                <h3>Keyword routing</h3>
-                <p>Route "deep reasoning" to Opus, "quick" to Haiku — fully driven by <span class="mono">config.yaml</span>.</p>
+                <h3>Hybrid Token Filter</h3>
+                <p>Regex + local LLM rewrites verbose CLI output before it enters context. 60–98% token savings, zero prompt cache breakage.</p>
               </article>
 
               <article class="feature">
@@ -399,23 +482,39 @@
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/></svg>
                 </div>
                 <h3>Local MLX inference</h3>
-                <p>Spin up Gemma, Qwen, Llama, or Mistral on Apple Silicon for free, offline inference.</p>
-              </article>
-
-              <article class="feature">
-                <div class="feature-icon" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 18a5 5 0 0 0-2-9.6A6 6 0 0 0 4 10a4 4 0 0 0 0 8h13z"/></svg>
-                </div>
-                <h3>AWS SSO ready</h3>
-                <p>Bedrock backend reuses AWS SSO profiles — no static credentials in config files.</p>
+                <p>Run Gemma, Qwen, Llama, Mistral on Apple Silicon. Powers Token Filter classification and doubles as a free inference backend.</p>
               </article>
 
               <article class="feature">
                 <div class="feature-icon" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4v6c0 5-3.5 9-9 10-5.5-1-9-5-9-10V6z"/></svg>
                 </div>
-                <h3>Admin dashboard</h3>
-                <p>Manage users, keys, backends, and live usage from a clean web UI — included.</p>
+                <h3>Claude Setup</h3>
+                <p>One-click install of 48 agents, 183 skills, 79 commands, 88 rules, 14 MCP servers — from <span class="mono">everything-claude-code</span>.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>
+                </div>
+                <h3>Multi-backend routing</h3>
+                <p>Forward traffic to Anthropic, AWS Bedrock, or local MLX — chosen per request or by keyword rule.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l7-7 3 3-7 7"/><path d="M14 9l3 3"/></svg>
+                </div>
+                <h3>Virtual API keys</h3>
+                <p>Issue, rotate, and revoke keys per user with per-key budgets, expiry, and rate limits.</p>
+              </article>
+
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
+                </div>
+                <h3>Usage &amp; cost tracking</h3>
+                <p>Token counts, cache hits, and dollar cost per key/model/day — with budget controls that auto-block overspend.</p>
               </article>
             </div>
           </div>
@@ -491,7 +590,7 @@
 
       <footer class="landing-footer">
         <div class="container footer-row">
-          <div>Claude Code Max Croxy · self-hosted Anthropic-compatible gateway</div>
+          <div>Claude Croxy · local LLM token filtering for Claude Code · Apple Silicon</div>
           <ul>
             <li><a href="/ui/admin">Admin</a></li>
             <li><a href="/ui/login">Sign in</a></li>

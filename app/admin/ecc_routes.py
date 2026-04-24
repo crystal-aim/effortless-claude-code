@@ -85,16 +85,22 @@ class ProfileImportIn(BaseModel):
 
 
 class TokenFilterConfigIn(BaseModel):
-    max_lines: int = 300
-    tail_lines: int = 150
+    max_lines: int = ecc_token_filter.DEFAULT_MAX_LINES
+    tail_lines: int = ecc_token_filter.DEFAULT_TAIL_LINES
+    mlx_enabled: bool = ecc_token_filter.DEFAULT_MLX_ENABLED
+    mlx_threshold: int = ecc_token_filter.DEFAULT_MLX_THRESHOLD
+    mlx_url: str = ecc_token_filter.DEFAULT_MLX_URL
 
 
 class TokenFilterInstallIn(BaseModel):
     target: Literal["user", "project"] = "user"
     project_path: Optional[str] = None
     backup: bool = True
-    max_lines: int = 300
-    tail_lines: int = 150
+    max_lines: int = ecc_token_filter.DEFAULT_MAX_LINES
+    tail_lines: int = ecc_token_filter.DEFAULT_TAIL_LINES
+    mlx_enabled: bool = ecc_token_filter.DEFAULT_MLX_ENABLED
+    mlx_threshold: int = ecc_token_filter.DEFAULT_MLX_THRESHOLD
+    mlx_url: str = ecc_token_filter.DEFAULT_MLX_URL
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +321,12 @@ def token_filter_status(
 
 @router.post("/token-filter/config")
 def token_filter_config(body: TokenFilterConfigIn, _admin: User = Depends(require_admin)):
-    return ecc_token_filter.save_config(body.max_lines, body.tail_lines)
+    return ecc_token_filter.save_config(
+        body.max_lines, body.tail_lines,
+        mlx_enabled=body.mlx_enabled,
+        mlx_threshold=body.mlx_threshold,
+        mlx_url=body.mlx_url,
+    )
 
 
 @router.post("/token-filter/install")
@@ -324,6 +335,9 @@ def token_filter_install(body: TokenFilterInstallIn, _admin: User = Depends(requ
         return ecc_token_filter.install(
             body.target, body.project_path, backup=body.backup,
             max_lines=body.max_lines, tail_lines=body.tail_lines,
+            mlx_enabled=body.mlx_enabled,
+            mlx_threshold=body.mlx_threshold,
+            mlx_url=body.mlx_url,
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
@@ -407,26 +421,4 @@ def ecc_set_target(body: TargetPrefIn, _admin: User = Depends(require_admin)):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _read_setting(key: str) -> Optional[str]:
-    from app.db import session_scope
-    from app.models import Setting
-
-    with session_scope() as db:
-        row = db.get(Setting, key)
-        return row.value if row else None
-
-
-def _write_setting(key: str, value: Optional[str]) -> None:
-    from app.db import session_scope
-    from app.models import Setting
-
-    with session_scope() as db:
-        row = db.get(Setting, key)
-        if value is None:
-            if row is not None:
-                db.delete(row)
-            return
-        if row is None:
-            db.add(Setting(key=key, value=value))
-        else:
-            row.value = value
+from app.db import read_setting as _read_setting, write_setting as _write_setting

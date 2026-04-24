@@ -783,6 +783,7 @@ const TOKEN_FILTER_RULES = [
   { cmd: "pytest / jest / cargo test", desc: "Pipe through tail -N (summary at end)" },
   { cmd: "docker ps/images/logs", desc: "Pipe through head -N" },
   { cmd: "ps", desc: "Pipe through head -N" },
+  { cmd: "Unmatched (MLX)", desc: "MLX classifies → HEAD / TAIL / SUMMARIZE (requires MLX mode)" },
 ];
 
 async function renderTokenFilter() {
@@ -804,17 +805,30 @@ async function renderTokenFilter() {
   }, st.installed ? "Installed" : "Not installed");
 
   pane.appendChild(el("div", { style: "display:flex;align-items:center;gap:12px;margin-bottom:var(--space-3)" },
-    el("h3", { style: "margin:0" }, "RTK-Style Token Filter"),
+    el("h3", { style: "margin:0" }, "Hybrid Token Filter"),
     badge,
   ));
 
   pane.appendChild(el("p", { class: "muted", style: "font-size:var(--fs-sm);margin-bottom:var(--space-3)" },
-    "A PreToolUse hook that rewrites verbose CLI commands to include output truncation. Reduces token consumption by 60-90% on commands like git diff, find, grep, etc.",
+    "A PreToolUse hook that rewrites verbose CLI commands to include output truncation. Combines regex fast path with optional MLX local inference for broader coverage. Reduces token consumption by 60-98%.",
   ));
 
   // Config form
   const maxInput = el("input", { type: "number", value: cfg.max_lines || 300, min: 50, max: 2000, style: "width:80px" });
   const tailInput = el("input", { type: "number", value: cfg.tail_lines || 150, min: 20, max: 1000, style: "width:80px" });
+  const mlxToggle = el("input", { type: "checkbox", checked: !!cfg.mlx_enabled });
+  const mlxThresholdInput = el("input", { type: "number", value: cfg.mlx_threshold || 2000, min: 500, max: 50000, style: "width:100px" });
+  const mlxUrlInput = el("input", { type: "text", value: cfg.mlx_url || "http://localhost:8899", style: "width:220px;font-size:var(--fs-sm)" });
+
+  const mlxFields = el("div", {
+    style: `display:${cfg.mlx_enabled ? "flex" : "none"};gap:24px;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border);margin-top:8px`,
+  },
+    el("label", { style: "display:flex;align-items:center;gap:8px;font-size:var(--fs-sm)" },
+      "MLX URL:", mlxUrlInput),
+    el("label", { style: "display:flex;align-items:center;gap:8px;font-size:var(--fs-sm)" },
+      "Summarize threshold (chars):", mlxThresholdInput),
+  );
+  mlxToggle.onchange = () => { mlxFields.style.display = mlxToggle.checked ? "flex" : "none"; };
 
   const configCard = el("div", { class: "card", style: "margin-bottom:var(--space-3)" },
     el("div", { class: "card-header" }, el("h3", { style: "margin:0;font-size:var(--fs-md)" }, "Configuration")),
@@ -823,13 +837,24 @@ async function renderTokenFilter() {
         "Max lines (head):", maxInput),
       el("label", { style: "display:flex;align-items:center;gap:8px;font-size:var(--fs-sm)" },
         "Tail lines (tests):", tailInput),
+      el("label", { style: "display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);margin-left:12px" },
+        mlxToggle, "MLX hybrid mode"),
+    ),
+    mlxFields,
+    el("div", { style: "padding:8px 0" },
       el("button", {
         class: "btn secondary small",
         onclick: async () => {
           try {
             await api("/api/ecc/token-filter/config", {
               method: "POST",
-              body: { max_lines: +maxInput.value, tail_lines: +tailInput.value },
+              body: {
+                max_lines: +maxInput.value,
+                tail_lines: +tailInput.value,
+                mlx_enabled: mlxToggle.checked,
+                mlx_threshold: +mlxThresholdInput.value,
+                mlx_url: mlxUrlInput.value.trim(),
+              },
             });
             toast.success("Config saved.");
           } catch (e) { toast.error(e.message); }
@@ -855,11 +880,18 @@ async function renderTokenFilter() {
   pane.appendChild(rulesCard);
 
   // Script path info
-  pane.appendChild(el("div", { class: "info-box", style: "margin-bottom:var(--space-3);font-size:var(--fs-sm)" },
+  const infoItems = [
     "Script: ", el("code", {}, st.script_path),
     st.script_exists ? " (exists)" : " (will be created)",
     el("br"),
     "Target: ", el("code", {}, st.target_path || "(set project path above)"),
+  ];
+  if (st.mlx_filter_script_path) {
+    infoItems.push(el("br"), "MLX filter: ", el("code", {}, st.mlx_filter_script_path),
+      st.mlx_filter_script_exists ? " (exists)" : " (will be created when MLX enabled)");
+  }
+  pane.appendChild(el("div", { class: "info-box", style: "margin-bottom:var(--space-3);font-size:var(--fs-sm)" },
+    ...infoItems,
   ));
 
   // Install / Uninstall button
@@ -871,12 +903,12 @@ async function renderTokenFilter() {
   } else {
     pane.appendChild(el("button", {
       class: "btn",
-      onclick: () => onInstallTokenFilter(+maxInput.value, +tailInput.value),
+      onclick: () => onInstallTokenFilter(+maxInput.value, +tailInput.value, mlxToggle.checked, +mlxThresholdInput.value, mlxUrlInput.value.trim()),
     }, "Install Token Filter"));
   }
 }
 
-async function onInstallTokenFilter(maxLines, tailLines) {
+async function onInstallTokenFilter(maxLines, tailLines, mlxEnabled, mlxThreshold, mlxUrl) {
   if (targetPref.target === "project" && !targetPref.project_path?.trim()) {
     toast.error("Set an absolute project path above first.");
     return;
@@ -886,13 +918,20 @@ async function onInstallTokenFilter(maxLines, tailLines) {
     body.appendChild(el("h2", {}, "Install Token Filter"));
     body.appendChild(el("p", { class: "modal-sub" },
       "This will:"));
-    body.appendChild(el("ul", { style: "font-size:var(--fs-sm);margin:8px 0" },
+    const items = [
       el("li", {}, "Write filter script to ", el("code", {}, "~/.claude/croxy-token-filter.sh")),
       el("li", {}, "Add PreToolUse hook to ", el("code", {},
         targetPref.target === "project" ? `${targetPref.project_path}/.claude/settings.json` : "~/.claude/settings.json")),
-    ));
-    body.appendChild(el("div", { style: "font-size:var(--fs-sm);margin:8px 0" },
-      `Max lines: ${maxLines} | Tail lines: ${tailLines}`));
+    ];
+    if (mlxEnabled) {
+      items.push(el("li", {}, "Write MLX summarizer to ", el("code", {}, "~/.claude/croxy-mlx-filter.py")));
+      items.push(el("li", {}, "Enable MLX classification via ", el("code", {}, mlxUrl)));
+    }
+    body.appendChild(el("ul", { style: "font-size:var(--fs-sm);margin:8px 0" }, ...items));
+    const configLine = mlxEnabled
+      ? `Max lines: ${maxLines} | Tail lines: ${tailLines} | MLX: ON (threshold: ${mlxThreshold})`
+      : `Max lines: ${maxLines} | Tail lines: ${tailLines} | MLX: OFF`;
+    body.appendChild(el("div", { style: "font-size:var(--fs-sm);margin:8px 0" }, configLine));
     body.appendChild(el("label", { class: "row", style: "gap:8px;align-items:center;margin-top:var(--space-3)" },
       backupCb, el("span", {}, "Back up settings.json first")));
     body.appendChild(el("div", { class: "modal-actions" },
@@ -909,6 +948,9 @@ async function onInstallTokenFilter(maxLines, tailLines) {
                 backup: backupCb.checked,
                 max_lines: maxLines,
                 tail_lines: tailLines,
+                mlx_enabled: mlxEnabled,
+                mlx_threshold: mlxThreshold,
+                mlx_url: mlxUrl,
               },
             });
             h.close();
@@ -1094,7 +1136,6 @@ function onImportProfile() {
       const res = await api("/api/ecc/profile/import", { method: "POST", body: { profile, backup: true } });
       toast.success("Profile imported");
       await renderInstalled();
-      console.log("import summary", res);
     } catch (e) { toast.error(e.message); }
   });
   input.click();

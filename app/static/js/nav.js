@@ -45,6 +45,10 @@ export function renderShell({ me, active, pageTitle, actions = [] }) {
     active: active === "admin-provider",
   }));
   links.appendChild(navLink({
+    href: "/ui/admin#mlx", label: "MLX Inference", iconName: "cpu",
+    active: active === "admin-mlx",
+  }));
+  links.appendChild(navLink({
     href: "/ui/admin#ecc", label: "Claude Setup", iconName: "plus",
     active: active === "admin-ecc",
   }));

@@ -1,6 +1,6 @@
 import os
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Iterator, Optional
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -46,3 +46,26 @@ def get_db() -> Iterator[Session]:
         yield s
     finally:
         s.close()
+
+
+def read_setting(key: str) -> Optional[str]:
+    from app.models import Setting
+
+    with session_scope() as db:
+        row = db.get(Setting, key)
+        return row.value if row else None
+
+
+def write_setting(key: str, value: Optional[str]) -> None:
+    from app.models import Setting
+
+    with session_scope() as db:
+        row = db.get(Setting, key)
+        if value is None:
+            if row is not None:
+                db.delete(row)
+            return
+        if row is None:
+            db.add(Setting(key=key, value=value))
+        else:
+            row.value = value

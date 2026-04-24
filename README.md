@@ -99,14 +99,54 @@ curl http://localhost:4000/v1/messages \
 
 **Claude** (default) — Forward to the Anthropic API. Place your API key in `secrets/anthropic_api_key`.
 
-**AWS Bedrock** — Uses SSO device authorization. Configure in `config.yaml`:
+**AWS Bedrock** — Uses SSO device authorization via an AWS CLI profile.
+
+#### 1. Set up an AWS profile
+
+Install the AWS CLI and configure an SSO profile:
+
+```bash
+aws configure sso --profile bedrock-claude
+```
+
+You will be prompted for:
+- **SSO start URL** — your org's AWS access portal (e.g. `https://your-org.awsapps.com/start`)
+- **SSO region** — region of the SSO portal (e.g. `us-east-1`)
+- **Account** and **Role** — pick the account/role that has Bedrock access
+
+#### 2. Enable model access
+
+The AWS role associated with your profile must have Bedrock model access enabled. In the AWS Console:
+
+1. Go to **Amazon Bedrock → Model access** (in the region you will use, e.g. `us-east-1`)
+2. Click **Manage model access**
+3. Enable the Anthropic Claude models you need (Sonnet, Opus, Haiku)
+4. Wait for status to show **Access granted**
+
+The IAM role also needs the `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` permissions. A minimal policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": [
+      "bedrock:InvokeModel",
+      "bedrock:InvokeModelWithResponseStream"
+    ],
+    "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.*"
+  }]
+}
+```
+
+#### 3. Configure Croxy
 
 ```yaml
 backend:
   provider: "bedrock"
   bedrock:
     region: "us-east-1"
-    aws_profile: "your-profile"
+    aws_profile: "bedrock-claude"
     sso_start_url: "https://your-org.awsapps.com/start"
 ```
 

@@ -155,6 +155,12 @@ def _health_check(port: int, timeout: float = 120) -> bool:
     _set_status("starting")
     deadline = time.time() + timeout
     while time.time() < deadline:
+        with _lock:
+            proc = _process
+        if proc is not None and proc.poll() is not None:
+            _append_log("[health] Process exited before becoming ready.")
+            _set_status("error", "Process exited during startup")
+            return False
         try:
             resp = httpx.get(f"http://127.0.0.1:{port}/v1/models", timeout=3)
             if resp.status_code == 200:
@@ -168,12 +174,36 @@ def _health_check(port: int, timeout: float = 120) -> bool:
     return False
 
 
+def _kill_port_holder(port: int) -> None:
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        pids = result.stdout.strip().split()
+        for pid_str in pids:
+            pid = int(pid_str)
+            if pid == os.getpid():
+                continue
+            _append_log(f"[server] Killing stale process {pid} on port {port}")
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        if pids:
+            time.sleep(2)
+    except Exception as e:
+        log.debug("_kill_port_holder: %s", e)
+
+
 def _start_thread(model_id: str, port: int) -> None:
     global _process, _current_model
 
     if not is_model_downloaded(model_id):
         if not _download_model(model_id):
             return
+
+    _kill_port_holder(port)
 
     _set_status("starting")
     _append_log(f"[server] Starting mlx-vlm server: model={model_id} port={port}")
@@ -255,6 +285,13 @@ def stop_server() -> None:
             proc.wait(timeout=5)
     except Exception as e:
         _append_log(f"[server] Error stopping: {e}")
+
+    try:
+        from app.config import get_config
+        port = get_config().backend.mlx.port
+    except Exception:
+        port = 8899
+    _kill_port_holder(port)
 
     with _lock:
         _process = None

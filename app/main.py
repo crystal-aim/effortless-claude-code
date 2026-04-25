@@ -16,6 +16,8 @@ from app.models import User
 from app.proxy import router as proxy_router
 from app.rate_limit import limiter
 
+log = logging.getLogger("ccm.main")
+
 
 def _seed_admin() -> None:
     with session_scope() as db:
@@ -45,12 +47,31 @@ def create_app() -> FastAPI:
     from app.backend import mlx_server
     from app.ecc import auto_sync
 
+    def _auto_start_mlx() -> None:
+        try:
+            last_model = mlx_server._db_load_last_selected()
+            if not last_model:
+                log.info("mlx auto-start: no last model saved, skipping")
+                return
+            cfg = get_config()
+            hf_id = cfg.backend.mlx.model_map.get(last_model)
+            if hf_id is None:
+                log.warning("mlx auto-start: model %r not in model_map, skipping", last_model)
+                return
+            log.info("mlx auto-start: resuming %s (%s)", last_model, hf_id)
+            mlx_server.start_server(hf_id, port=cfg.backend.mlx.port, display_name=last_model)
+        except Exception:
+            log.exception("mlx auto-start failed (non-fatal)")
+
     @asynccontextmanager
     async def lifespan(app):
         import asyncio as _asyncio
         auto_sync.bind_loop(_asyncio.get_running_loop())
         auto_sync.start()
+        _auto_start_mlx()
+        mlx_server.start_watchdog()
         yield
+        mlx_server.stop_watchdog()
         auto_sync.stop()
         mlx_server.stop_server()
 

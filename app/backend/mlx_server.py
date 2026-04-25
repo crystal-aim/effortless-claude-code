@@ -23,6 +23,13 @@ _status: str = "stopped"  # stopped | downloading | starting | running | error
 _error_message: str = ""
 _logs: deque[str] = deque(maxlen=500)
 _lock = threading.Lock()
+_intentionally_stopped: bool = True
+
+_watchdog_thread: Optional[threading.Thread] = None
+_watchdog_stop_event = threading.Event()
+_WATCHDOG_INTERVAL = 30
+_WATCHDOG_MAX_RETRIES = 5
+_WATCHDOG_RETRY_RESET = 300
 
 # Last model the user selected — persisted to settings.mlx.last_model so it
 # survives stop/start and full process restarts. Holds the short name (e.g.
@@ -214,7 +221,8 @@ def start_server(model_id: str, port: int = 8899, display_name: Optional[str] = 
     falls back to `model_id`. Persisted to DB so UI can re-preselect across
     stop/start and process restarts.
     """
-    global _process, _last_selected_model, _last_selected_loaded
+    global _process, _last_selected_model, _last_selected_loaded, _intentionally_stopped
+    _intentionally_stopped = False
     with _lock:
         if _status in ("downloading", "starting"):
             return
@@ -229,7 +237,8 @@ def start_server(model_id: str, port: int = 8899, display_name: Optional[str] = 
 
 
 def stop_server() -> None:
-    global _process, _current_model
+    global _process, _current_model, _intentionally_stopped
+    _intentionally_stopped = True
     with _lock:
         proc = _process
     if proc is None:
@@ -252,3 +261,101 @@ def stop_server() -> None:
         _current_model = None
     _set_status("stopped")
     _append_log("[server] Stopped.")
+
+
+def _watchdog_loop() -> None:
+    consecutive_failures = 0
+    last_healthy = time.time()
+
+    while not _watchdog_stop_event.is_set():
+        _watchdog_stop_event.wait(_WATCHDOG_INTERVAL)
+        if _watchdog_stop_event.is_set():
+            break
+
+        if _intentionally_stopped:
+            consecutive_failures = 0
+            continue
+
+        with _lock:
+            proc = _process
+            model = _current_model
+            status = _status
+
+        if status not in ("running", "starting", "downloading"):
+            continue
+
+        if proc is not None and proc.poll() is None:
+            consecutive_failures = 0
+            last_healthy = time.time()
+            continue
+
+        if consecutive_failures >= _WATCHDOG_MAX_RETRIES:
+            log.error(
+                "mlx watchdog: %d consecutive failures, giving up",
+                consecutive_failures,
+            )
+            _set_status("error", f"Watchdog gave up after {consecutive_failures} attempts")
+            continue
+
+        if time.time() - last_healthy > _WATCHDOG_RETRY_RESET:
+            consecutive_failures = 0
+
+        consecutive_failures += 1
+        log.warning(
+            "mlx watchdog: process died (attempt %d/%d), restarting %s",
+            consecutive_failures,
+            _WATCHDOG_MAX_RETRIES,
+            model,
+        )
+        _append_log(
+            f"[watchdog] Process crashed, restarting "
+            f"(attempt {consecutive_failures}/{_WATCHDOG_MAX_RETRIES})"
+        )
+
+        try:
+            from app.config import get_config
+            port = get_config().backend.mlx.port
+        except Exception:
+            port = 8899
+
+        restart_model = model
+        if restart_model is None:
+            name = _db_load_last_selected()
+            if name is None:
+                log.error("mlx watchdog: no model to restart")
+                continue
+            try:
+                from app.config import get_config
+                hf_id = get_config().backend.mlx.model_map.get(name)
+                if hf_id:
+                    restart_model = hf_id
+                else:
+                    restart_model = name
+            except Exception:
+                restart_model = name
+
+        threading.Thread(
+            target=_start_thread, args=(restart_model, port), daemon=True
+        ).start()
+
+
+def start_watchdog() -> None:
+    global _watchdog_thread
+    if _watchdog_thread is not None and _watchdog_thread.is_alive():
+        return
+    _watchdog_stop_event.clear()
+    _watchdog_thread = threading.Thread(
+        target=_watchdog_loop, daemon=True, name="mlx-watchdog"
+    )
+    _watchdog_thread.start()
+    log.info("mlx watchdog started (interval=%ds, max_retries=%d)",
+             _WATCHDOG_INTERVAL, _WATCHDOG_MAX_RETRIES)
+
+
+def stop_watchdog() -> None:
+    global _watchdog_thread
+    _watchdog_stop_event.set()
+    if _watchdog_thread is not None:
+        _watchdog_thread.join(timeout=5)
+        _watchdog_thread = None
+    log.info("mlx watchdog stopped")

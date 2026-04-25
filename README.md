@@ -12,6 +12,7 @@ A lightweight API proxy for Claude that adds virtual key management, usage track
 - **Budget Controls** — Per-key spend limits with daily/weekly/monthly reset periods
 - **Local Inference** — Run Gemma 4, Qwen 2.5, Llama 3.1, Mistral Nemo on Apple Silicon via MLX
 - **Admin Dashboard** — Web UI for key management, provider config, usage charts, and MLX server control
+- **Auto-Start** — macOS LaunchAgent for auto-start on login, MLX server auto-resume with last used model, and watchdog thread that auto-restarts crashed MLX processes
 - **Token Filter** — 3-layer hybrid PreToolUse hook: (1) regex rewrites verbose CLI commands to include output truncation, (2) local MLX model classifies whether output needs filtering, (3) local MLX model summarizes large outputs — preserving key information (error messages, file paths, anomalies, summary numbers) verbatim while cutting 60–98% of tokens, all without breaking Anthropic prompt caching
 - **Claude Setup** — One-click installer for [everything-claude-code](https://github.com/affaan-m/everything-claude-code) (48 agents, 183 skills, 79 commands, 88 rules, 14 MCP servers, hooks) plus a browser for [awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code)
 
@@ -362,6 +363,49 @@ Head truncation is lossless when key information is near the top of the output. 
 ### Inspiration
 
 The regex layer was originally inspired by [RTK (Rust Token Killer)](https://github.com/rtk-ai/rtk). The croxy implementation goes further by adding local LLM inference (MLX) for intelligent classification and summarization of commands that regex alone cannot handle — deployed as a Claude Code hook with no extra binary needed.
+
+## Auto-Start (macOS)
+
+Claude Croxy can auto-start when you log in to macOS using a LaunchAgent, and automatically resume the last MLX model with a watchdog that restarts it if the process crashes.
+
+### Setup
+
+First, run the app manually at least once to seed the admin account:
+
+```bash
+CCM_ADMIN_EMAIL=admin@example.com \
+CCM_ADMIN_PASSWORD=your-secure-password \
+python -m app.main
+```
+
+Then install the LaunchAgent:
+
+```bash
+bash scripts/launchd_setup.sh install
+```
+
+The app will now auto-start on login, auto-restart if killed, and resume the last MLX model you used.
+
+### Management Commands
+
+```bash
+bash scripts/launchd_setup.sh status    # Check if service is running
+bash scripts/launchd_setup.sh restart   # Restart the service
+bash scripts/launchd_setup.sh logs      # Tail log files
+bash scripts/launchd_setup.sh uninstall # Remove auto-start
+```
+
+Logs are written to `logs/ccm-stdout.log` and `logs/ccm-stderr.log` in the project directory.
+
+### MLX Watchdog
+
+When the app starts, it automatically:
+1. Resumes the last MLX model you selected (stored in the database)
+2. Starts a watchdog thread that checks the MLX process every 30 seconds
+3. If the MLX process crashes, the watchdog restarts it (up to 5 consecutive retries)
+4. If you stop the MLX server intentionally via the admin UI, the watchdog will not restart it
+
+The retry counter resets after 5 minutes of stable running, so transient failures are handled gracefully.
 
 ## Architecture
 

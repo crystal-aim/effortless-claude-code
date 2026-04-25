@@ -287,6 +287,15 @@ def _hook_entry() -> dict:
     }
 
 
+def _is_our_entry(e: dict) -> bool:
+    if _entry_id(e) == HOOK_ID:
+        return True
+    for h in e.get("hooks", []) or []:
+        if isinstance(h, dict) and str(SCRIPT_DEST) in str(h.get("command", "")):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Config (persisted in Setting table)
 # ---------------------------------------------------------------------------
@@ -368,7 +377,7 @@ def get_status(target: str, project_path: Optional[str]) -> dict:
         try:
             settings = _load_settings(target_path)
             hooks = settings.get("hooks", {}).get(HOOK_EVENT, [])
-            installed = any(_entry_id(e) == HOOK_ID for e in hooks if isinstance(e, dict))
+            installed = any(_is_our_entry(e) for e in hooks if isinstance(e, dict))
         except (ValueError, OSError):
             pass
 
@@ -448,7 +457,7 @@ def install(
     entry = _hook_entry()
     existing_idx = None
     for i, e in enumerate(dst_list):
-        if isinstance(e, dict) and _entry_id(e) == HOOK_ID:
+        if isinstance(e, dict) and _is_our_entry(e):
             existing_idx = i
             break
 
@@ -490,7 +499,7 @@ def uninstall(target: str, project_path: Optional[str]) -> dict:
         settings = _load_settings(target_path)
         hooks_block = settings.get("hooks", {})
         dst_list = hooks_block.get(HOOK_EVENT, [])
-        kept = [e for e in dst_list if not (isinstance(e, dict) and _entry_id(e) == HOOK_ID)]
+        kept = [e for e in dst_list if not (isinstance(e, dict) and _is_our_entry(e))]
         if len(kept) != len(dst_list):
             hooks_block[HOOK_EVENT] = kept
             settings["hooks"] = hooks_block
@@ -530,7 +539,7 @@ def uninstall_from_tracker(rows: list[dict]) -> dict:
             settings = _load_settings(p)
             hooks_block = settings.get("hooks", {})
             dst_list = hooks_block.get(HOOK_EVENT, [])
-            kept = [e for e in dst_list if not (isinstance(e, dict) and _entry_id(e) == HOOK_ID)]
+            kept = [e for e in dst_list if not (isinstance(e, dict) and _is_our_entry(e))]
             if len(kept) != len(dst_list):
                 hooks_block[HOOK_EVENT] = kept
                 settings["hooks"] = hooks_block

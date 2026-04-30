@@ -26,8 +26,8 @@ A lightweight API proxy for Claude that adds virtual key management, usage track
 ### Install
 
 ```bash
-git clone https://github.com/claude-croxy/claude-croxy.git
-cd claude-croxy
+git https://github.com/crystal-aim/effortless-claude-code.git
+cd effortless-claude-code
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

@@ -2,16 +2,18 @@
 
 Use Claude Croxy as a drop-in replacement for `https://api.anthropic.com/v1/messages` with virtual keys, per-key budgets, and usage tracking.
 
-## 1. Add your Anthropic API key
+## How auth works
 
-```bash
-mkdir -p secrets
-echo "sk-ant-YOUR-KEY" > secrets/anthropic_api_key
-```
+Croxy doesn't store an upstream Anthropic API key. The `claude` backend simply forwards the headers from the incoming request to `api.anthropic.com`. The split:
 
-The `claude` provider (default in `config.yaml`) reads from this file.
+- **`x-cc-api-key`** (or `x-ccm-key`) — your `sk-ccm-*` virtual key. Croxy validates it (key budgets, rate limits, expiry) and **strips it** before forwarding upstream.
+- **`x-api-key`** — your real `sk-ant-*` Anthropic key. Croxy leaves it untouched; Anthropic uses it to authenticate the request.
 
-## 2. Generate a virtual key
+The Claude Code CLI sends both headers automatically when `ANTHROPIC_BASE_URL` points at the proxy and `ANTHROPIC_API_KEY` is your real Anthropic key. The virtual key goes into a separate `x-cc-api-key` config in the CLI.
+
+> If you're using the **Bedrock** or **MLX** backend, no Anthropic key is needed at all — Bedrock auth is via SSO, MLX runs locally.
+
+## 1. Generate a virtual key
 
 Open the admin dashboard at `http://localhost:4000/ui/admin` → **Keys** tab → **New key**.
 
@@ -22,12 +24,15 @@ You can set per-key:
 
 The key is shown once — copy it immediately. Format: `sk-ccm-…`.
 
-## 3. Call the proxy
+## 2. Call the proxy (curl)
+
+For the `claude` backend, send **both** headers — virtual key for Croxy, real Anthropic key for upstream:
 
 ```bash
 curl http://localhost:4000/v1/messages \
   -H "Content-Type: application/json" \
-  -H "x-api-key: sk-ccm-your-virtual-key" \
+  -H "x-cc-api-key: sk-ccm-your-virtual-key" \
+  -H "x-api-key: sk-ant-your-real-anthropic-key" \
   -H "anthropic-version: 2023-06-01" \
   -d '{
     "model": "claude-sonnet-4-6",
@@ -36,16 +41,25 @@ curl http://localhost:4000/v1/messages \
   }'
 ```
 
+For `bedrock` / `mlx` backends you can drop `x-api-key` entirely — only `x-cc-api-key` is needed:
+
+```bash
+curl http://localhost:4000/v1/messages \
+  -H "x-cc-api-key: sk-ccm-your-virtual-key" \
+  …
+```
+
 Streaming (`"stream": true`) and the full Anthropic message schema are supported.
 
-## 4. Point clients at the proxy
-
-For any Anthropic SDK / Claude Code client, set:
+## 3. Point Claude Code / SDKs at the proxy
 
 | Variable | Value |
 |---|---|
 | `ANTHROPIC_BASE_URL` | `http://localhost:4000` |
-| `ANTHROPIC_API_KEY` | `sk-ccm-…` (your virtual key) |
+| `ANTHROPIC_API_KEY` | `sk-ant-…` (your real Anthropic key — forwarded upstream) |
+| `CLAUDE_CODE_API_KEY` *(or equivalent)* | `sk-ccm-…` (your Croxy virtual key — used for budget/tracking) |
+
+For Bedrock/MLX backends, leave `ANTHROPIC_API_KEY` unset and only set the virtual key.
 
 ## Architecture
 

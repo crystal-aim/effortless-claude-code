@@ -24,6 +24,7 @@ config.yaml
 sso_state.json
 *.env
 .env.*
+!.env.example
 secrets.yaml
 
 # macOS

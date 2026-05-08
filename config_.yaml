@@ -5,7 +5,7 @@ upstream:
 server:
   host: "0.0.0.0"
   port: 4000
-  session_secret: "change-me-to-a-long-random-string"
+  session_secret: "4b78132b41c54409943548192babfdc5"
 
 rate_limit:
   proxy_per_minute: 60
@@ -14,14 +14,13 @@ rate_limit:
 backend:
   # "claude"  = forward to Anthropic API
   # "bedrock" = call AWS Bedrock
-  # "mlx"     = local inference on Apple Silicon
-  # "auto"    = claude primary, bedrock fallback on 529
+  # "auto"
   provider: "claude"
 
   bedrock:
-    region: "us-east-1"
-    aws_profile: "default"
-    sso_start_url: "https://your-org.awsapps.com/start"
+    region: "eu-west-1"
+    aws_profile: "ai"
+    sso_start_url: "https://tymecentral.awsapps.com/start"
     sso_state_file: "sso_state.json"
     model_map:
       claude-opus-4-7: "global.anthropic.claude-opus-4-7"
@@ -39,19 +38,22 @@ backend:
       # Gemma 4 (custom-token tool protocol)
       gemma-4-e2b-it: "mlx-community/gemma-4-e2b-it-4bit"
       gemma-4-e4b-it: "mlx-community/gemma-4-e4b-it-4bit"
-      # Standard OpenAI tool calling
+      gemma-4-26B-a4b-it: "mlx-community/gemma-4-26b-a4b-it-4bit"
+      gemma-4-31b: "mlx-community/gemma-4-31b-it-4bit"
+      # Standard OpenAI tool calling (preferred for Claude Code tool use)
       qwen-2.5-7b-it: "mlx-community/Qwen2.5-7B-Instruct-4bit"
+      qwen-2.5-14b-it: "mlx-community/Qwen2.5-14B-Instruct-4bit"
       qwen-2.5-32b-it: "mlx-community/Qwen2.5-32B-Instruct-4bit"
       qwen-2.5-coder-32b-it: "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"
       llama-3.1-8b-it: "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit"
       mistral-nemo-12b-it: "mlx-community/Mistral-Nemo-Instruct-2407-4bit"
 
-default_model: "claude-sonnet-4-6"
+default_model: "claude-opus-4-7"
 
 routing_rules:
-  - keywords: ["opus", "analysis", "deep reasoning", "architect"]
+  - keywords: [ "opus", "analysis", "deep reasoning", "architect" ]
     model: "claude-opus-4-7"
-  - keywords: ["haiku", "quick", "cheap", "tiny"]
+  - keywords: [ "haiku", "quick", "cheap", "tiny" ]
     model: "claude-haiku-4-5-20251001"
 
 pricing:
@@ -70,11 +72,22 @@ pricing:
     output: 5.0
     cache_write: 1.25
     cache_read: 0.10
-  # Local MLX models — free
   gemma-4-e2b-it:
     input: 0.0
     output: 0.0
+  gemma-4-e4b-it:
+    input: 0.0
+    output: 0.0
+  gemma-4-26B-a4b-it:
+    input: 0.0
+    output: 0.0
+  gemma-4-31b:
+    input: 0.0
+    output: 0.0
   qwen-2.5-7b-it:
+    input: 0.0
+    output: 0.0
+  qwen-2.5-14b-it:
     input: 0.0
     output: 0.0
   qwen-2.5-32b-it:

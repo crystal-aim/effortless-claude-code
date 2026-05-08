@@ -1,5 +1,15 @@
 import logging
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from the project root before reading any env vars below.
+# Explicit path so this works under launchd / systemd, not just from a shell cwd.
+# `override=False` means existing environment values (shell exports, plist
+# EnvironmentVariables) always win over `.env`.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_PROJECT_ROOT / ".env", override=False)
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, RedirectResponse

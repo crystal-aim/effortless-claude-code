@@ -1,0 +1,14 @@
+## Minimal config — just change `session_secret` below and you can start the server.
+## Everything else has sensible defaults baked into the app.
+##
+## Want to enable AWS Bedrock, MLX local models, virtual keys, routing rules,
+## or custom pricing? See the docs/ folder:
+##   - docs/api-proxy.md     Virtual keys + Anthropic API
+##   - docs/bedrock.md       AWS Bedrock SSO
+##   - docs/mlx.md           Local MLX inference
+##   - docs/configuration.md Full config reference
+
+server:
+  # REQUIRED: replace with a long random string. Generate one with:
+  #   python -c 'import secrets; print(secrets.token_urlsafe(48))'
+  session_secret: "12312312"

@@ -40,3 +40,4 @@ secrets.yaml
 # Logs
 *.log
 logs/
+config.ori.yaml
